@@ -7,6 +7,7 @@ const FIELD_TYPE_KEYS: Record<FieldType, MessageKey> = {
   number: 'fieldtype.number',
   date: 'fieldtype.date',
   datetime: 'fieldtype.datetime',
+  time: 'fieldtype.time',
   boolean: 'fieldtype.boolean',
   select: 'fieldtype.select',
   multiselect: 'fieldtype.multiselect',

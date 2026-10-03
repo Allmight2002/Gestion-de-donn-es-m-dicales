@@ -25,7 +25,7 @@ import { HelpDetails } from '../../components/HelpTip';
 
 const STATUSES = ['draft', 'complete', 'curated'] as const;
 const CONFLICTS = ['fill', 'overwrite', 'skip'] as const;
-const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
+const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'time', 'boolean', 'select', 'multiselect'];
 const MAX_ROWS = 5000;
 const MAX_FILE_BYTES = 15 * 1024 * 1024; // §5.3 : borne de TAILLE avant lecture (anti fichier hostile)
 const CHUNK = 300; // taille des lots (au-dela, import par lots avec progression)

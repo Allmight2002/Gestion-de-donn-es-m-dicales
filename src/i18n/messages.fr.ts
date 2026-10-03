@@ -544,6 +544,7 @@ export const messages = {
     'fieldtype.number': 'Nombre décimal',
     'fieldtype.date': 'Date',
     'fieldtype.datetime': 'Date et heure',
+    'fieldtype.time': 'Heure',
     'date.choose': 'Choisir une date',
     'date.picker_label': 'Sélecteur de date',
     'date.no_date': 'Aucune date sélectionnée',
@@ -758,6 +759,7 @@ export const messages = {
     'admin.field_default_none': 'Aucune',
     'admin.field_default_today': 'La date du jour',
     'admin.field_default_now': "La date et l'heure de la saisie",
+    'admin.field_default_now_time': "L'heure de la saisie",
     'admin.field_default_warn_clinical':
       'Jugement clinique : sans relecture, la réponse proposée sera enregistrée telle quelle.',
     'admin.field_default_warn_shape':
@@ -1188,6 +1190,7 @@ export const messages = {
     'cohort.value_int': '« {field} » est un entier : saisissez un nombre entier (ex. 42).',
     'cohort.value_num': '« {field} » est un nombre : saisissez une valeur numérique (ex. 12.5).',
     'cohort.value_date': '« {field} » est une date : utilisez le format AAAA-MM-JJ.',
+    'cohort.value_time': '« {field} » est une heure : utilisez le format HH:MM.',
     'cohort.live_count_loading': 'Calcul de l’effectif actuel…',
     'cohort.dynamic_export_hint': 'Cette cohorte évolue automatiquement. Figez-la avant de l’exporter.',
     'cohort.freeze_now': 'Figer maintenant',

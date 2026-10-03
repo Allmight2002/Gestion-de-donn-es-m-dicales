@@ -28,6 +28,8 @@ export type FieldScope = 'patient' | 'encounter';
 export type FieldSection = string | null;
 export type FieldType =
   | 'number' | 'integer' | 'text' | 'date' | 'datetime' | 'boolean' | 'select' | 'multiselect'
+  // Heure seule `HH:MM`, sans date ni fuseau (distincte de `datetime`).
+  | 'time'
   // Valeurs resolues dans le referentiel plutot que recopiees dans le gabarit.
   | 'terminology';
 

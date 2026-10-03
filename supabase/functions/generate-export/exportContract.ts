@@ -757,15 +757,31 @@ export function excelDatetimeSerial(iso: string): number | null {
   return days === null ? null : days + EXCEL_EPOCH_OFFSET_DAYS;
 }
 
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/;
+
 /**
- * Transforme les valeurs des colonnes date/datetime en nombres de serie Excel pour l'ecriture
+ * Heure seule `HH:MM[:SS]` -> fraction de jour Excel (08:30 -> 0,3541667). Sans date ni fuseau :
+ * l'heure saisie est rendue telle quelle. Une heure invalide vaut ABSENTE, jamais zero.
+ */
+export function excelTimeSerial(value: string): number | null {
+  const match = TIME_RE.exec(value.trim());
+  if (!match) return null;
+  const seconds = Number(match[1]) * 3600 + Number(match[2]) * 60 + (match[3] ? Number(match[3]) : 0);
+  return seconds / 86_400;
+}
+
+/** Colonnes ecrites en cellules Excel natives : date, date-heure ou heure seule. */
+export type ExcelTemporalKind = 'date' | 'datetime' | 'time';
+
+/**
+ * Transforme les valeurs des colonnes date/datetime/heure en nombres de serie Excel pour l'ecriture
  * d'un classeur natif (L48). Ce que l'ecran CSV conserve en ISO, le classeur le chiffre. Une
  * valeur vide reste vide ; une valeur invalide reste TEXTE tel quel (jamais effacee, jamais 0).
  * Les autres colonnes (nombres, compteurs, indicatrices, textes) passent sans changement.
  */
 export function withExcelDateSerials(
   table: ExportTable,
-  temporalColumns: ReadonlyMap<string, 'date' | 'datetime'>,
+  temporalColumns: ReadonlyMap<string, ExcelTemporalKind>,
 ): ExportTable {
   return {
     columns: table.columns,
@@ -774,7 +790,11 @@ export function withExcelDateSerials(
       for (const [column, kind] of temporalColumns) {
         const value = row[column];
         if (typeof value !== 'string' || value === '') continue;
-        const serial = kind === 'datetime' ? excelDatetimeSerial(value) : excelDateSerial(value);
+        const serial = kind === 'datetime'
+          ? excelDatetimeSerial(value)
+          : kind === 'time'
+          ? excelTimeSerial(value)
+          : excelDateSerial(value);
         if (serial !== null) copy[column] = serial;
       }
       return copy;

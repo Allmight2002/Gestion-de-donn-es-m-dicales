@@ -214,13 +214,17 @@ export function ExportPanel() {
   return (
     <section className="max-w-2xl space-y-5">
       <div>
-        <button
-          onClick={() => navigate(cohortId ? `/bases/${baseId}/cohorts` : `/bases/${baseId}`)}
-          className="text-sm font-medium text-slate-500 hover:text-teal-700"
-        >
-          ← {t('admin.back')}
-        </button>
-        <h1 className="page-title mt-2">{cohortId ? t('export.title_cohort') : t('export.title')}</h1>
+        {/* L'export de la base est un onglet : la barre d'onglets suffit a en sortir. Seul
+            l'export d'une cohorte, en pleine page, garde son retour vers les cohortes. */}
+        {cohortId && (
+          <button
+            onClick={() => navigate(`/bases/${baseId}/cohorts`)}
+            className="mb-2 text-sm font-medium text-slate-500 hover:text-teal-700"
+          >
+            ← {t('admin.back')}
+          </button>
+        )}
+        <h1 className="page-title">{cohortId ? t('export.title_cohort') : t('export.title')}</h1>
         <p className="mt-1 text-sm text-slate-500">
           {cohortId ? t('export.subtitle_cohort') : t('export.subtitle')}
         </p>

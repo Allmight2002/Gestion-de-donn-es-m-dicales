@@ -16,6 +16,7 @@ import {
   buildProvenance,
   codingColumnId,
   columnId,
+  type ExcelTemporalKind,
   type ExportField,
   type ExportTable,
   extractMultivalueCodes,
@@ -248,19 +249,20 @@ export function exportFilenameSegment(value: unknown, fallback: string): string 
 }
 
 /**
- * Mappe les colonnes date/datetime de la feuille principale pour l'ecriture de cellules
+ * Mappe les colonnes date/datetime/heure de la feuille principale pour l'ecriture de cellules
  * Excel natives (L48). En mode RENCONTRE, `encounter_date` est une colonne de date meta ;
  * en mode PATIENT, seuls les champs rendus (patient + rencontre agreges) portent des dates.
  */
 function temporalColumnsOf(
   fields: ReturnType<typeof mergeExportFields>,
   mode: 'encounter' | 'patient',
-): Map<string, 'date' | 'datetime'> {
-  const map = new Map<string, 'date' | 'datetime'>();
+): Map<string, ExcelTemporalKind> {
+  const map = new Map<string, ExcelTemporalKind>();
   const rendered = mode === 'patient' ? fields : fields.filter((f) => f.scope === 'encounter');
   for (const f of rendered) {
     if (f.type === 'date') map.set(columnId(f), 'date');
     else if (f.type === 'datetime') map.set(columnId(f), 'datetime');
+    else if (f.type === 'time') map.set(columnId(f), 'time');
   }
   if (mode === 'encounter') map.set('encounter_date', 'date');
   return map;
@@ -270,13 +272,14 @@ type WorkSheetCells = Record<string, unknown> & { '!ref'?: string };
 
 /**
  * Pose le format d'affichage (cellule Excel native, type nombre) sur les colonnes de date :
- * `yyyy-mm-dd` pour les dates, `yyyy-mm-dd hh:mm:ss` pour les datetime (secondes fixes, UTC).
+ * `yyyy-mm-dd` pour les dates, `yyyy-mm-dd hh:mm:ss` pour les datetime (secondes fixes, UTC),
+ * `hh:mm:ss` pour les heures seules (heure saisie, sans fuseau).
  * Sans ce format, un nombre de serie s'afficherait comme un entier illisible.
  */
 function applyExcelDateFormats(
   sheet: WorkSheetCells,
   columns: readonly string[],
-  temporalColumns: ReadonlyMap<string, 'date' | 'datetime'>,
+  temporalColumns: ReadonlyMap<string, ExcelTemporalKind>,
 ): void {
   const ref = sheet['!ref'];
   if (!ref) return;
@@ -284,7 +287,7 @@ function applyExcelDateFormats(
   for (const [column, kind] of temporalColumns) {
     const columnIndex = columns.indexOf(column);
     if (columnIndex < 0 || columnIndex > range.e.c) continue;
-    const format = kind === 'datetime' ? 'yyyy-mm-dd hh:mm:ss' : 'yyyy-mm-dd';
+    const format = kind === 'datetime' ? 'yyyy-mm-dd hh:mm:ss' : kind === 'time' ? 'hh:mm:ss' : 'yyyy-mm-dd';
     for (let row = range.s.r + 1; row <= range.e.r; row++) {
       const cell = sheet[XLSX.utils.encode_cell({ r: row, c: columnIndex })] as
         | { t?: string; z?: string }

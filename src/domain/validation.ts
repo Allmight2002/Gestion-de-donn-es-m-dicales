@@ -83,6 +83,16 @@ function isStrictDateString(value: string): boolean {
   return validDateParts(Number(m[1]), Number(m[2]), Number(m[3]));
 }
 
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+
+/** Heure locale `HH:MM` ou `HH:MM:SS`, miroir de `is_strict_time_text`. */
+export function isStrictTimeString(value: string): boolean {
+  return TIME_RE.test(value);
+}
+
+/** `08:30` -> `08:30:00`, pour comparer deux heures saisies avec ou sans secondes. */
+const normalizedTime = (value: string) => (value.length === 5 ? `${value}:00` : value);
+
 function isStrictDateTimeString(value: string): boolean {
   const m = DATETIME_RE.exec(value);
   if (!m) return false;
@@ -125,6 +135,9 @@ export function validateField(field: TemplateField, value: unknown, requireCompl
   }
   if (field.type === 'datetime') {
     return isStrictDateTimeString(String(value)) ? null : 'Date/heure invalide (format ISO attendu)';
+  }
+  if (field.type === 'time') {
+    return isStrictTimeString(String(value)) ? null : 'Heure invalide (format HH:MM attendu)';
   }
   if (field.type === 'number' || field.type === 'integer') {
     const n = typeof value === 'number' ? value : Number(value);
@@ -185,6 +198,11 @@ function order(a: unknown, b: unknown): number | null {
   // dates ISO comparables en chaîne ; sinon numérique ; sinon null (incomparable)
   if (typeof a === 'string' && typeof b === 'string' && isStrictDateString(a) && isStrictDateString(b)) {
     return a < b ? -1 : a > b ? 1 : 0;
+  }
+  if (typeof a === 'string' && typeof b === 'string' && isStrictTimeString(a) && isStrictTimeString(b)) {
+    const ta = normalizedTime(a);
+    const tb = normalizedTime(b);
+    return ta < tb ? -1 : ta > tb ? 1 : 0;
   }
   if (typeof a === 'string' && typeof b === 'string' && isStrictDateTimeString(a) && isStrictDateTimeString(b)) {
     const ta = Date.parse(a);

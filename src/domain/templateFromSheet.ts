@@ -3,6 +3,7 @@
 // un type par colonne a partir des valeurs, pour transformer « tout retaper » en « verifier une
 // proposition ». Logique PURE (aucune I/O) -> testable, rejouable. L'utilisateur ajuste ensuite.
 import type { FieldScope, FieldSection, FieldType } from '../data/types';
+import { isStrictTimeString } from './validation';
 
 export interface ProposedField {
   include: boolean;
@@ -42,6 +43,7 @@ function inferColumn(values: string[]): { type: FieldType; allowedValues?: strin
   if (all(isInt)) return { type: 'integer' };
   if (all(isNum)) return { type: 'number' };
   if (all(isDate)) return { type: 'date' };
+  if (all(isStrictTimeString)) return { type: 'time' };
 
   // Peu de valeurs distinctes + repetition + valeurs courtes -> liste a choix.
   const distinct = [...new Set(vals)];

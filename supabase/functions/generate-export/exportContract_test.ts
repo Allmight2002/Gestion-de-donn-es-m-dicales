@@ -24,6 +24,7 @@ import {
   evaluateFormulaText,
   excelDateSerial,
   excelDatetimeSerial,
+  excelTimeSerial,
   type ExportEncounter,
   type ExportField,
   type ExportPatient,
@@ -1116,6 +1117,32 @@ Deno.test('L48 : withExcelDateSerials chiffre les dates et datetime, sans touche
   const convertedEdge = withExcelDateSerials(edge, temporalColumns);
   assertEquals(convertedEdge.rows[0][columnId(dateField)], '');
   assertEquals(convertedEdge.rows[1][columnId(dateField)], '2020-13-01');
+});
+
+Deno.test('heure seule : fraction de jour Excel, sans date ni fuseau ; invalide conservee en texte', () => {
+  assertEquals(excelTimeSerial('00:00'), 0);
+  assertEquals(excelTimeSerial('12:00'), 0.5);
+  assertAlmostEquals(excelTimeSerial('08:30')!, 0.3541667, 0.000_001);
+  assertAlmostEquals(excelTimeSerial('23:59:59')!, 0.9999884, 0.000_001);
+  assertEquals(excelTimeSerial('24:00'), null);
+  assertEquals(excelTimeSerial('8:30'), null);
+  assertEquals(excelTimeSerial('2020-01-01T08:30'), null);
+
+  const heure = champ({ fieldKey: 'heure_incision', type: 'time' });
+  const table: ExportTable = {
+    columns: ['patient_code', columnId(heure)],
+    rows: [
+      { patient_code: 'P1', [columnId(heure)]: '12:00' },
+      { patient_code: 'P2', [columnId(heure)]: '' },
+      { patient_code: 'P3', [columnId(heure)]: '25:00' },
+    ],
+  };
+  const converted = withExcelDateSerials(table, new Map([[columnId(heure), 'time' as const]]));
+  assertEquals(converted.rows[0][columnId(heure)], 0.5);
+  assertEquals(converted.rows[1][columnId(heure)], '');
+  assertEquals(converted.rows[2][columnId(heure)], '25:00');
+  // Le CSV garde la saisie telle quelle.
+  assertEquals(table.rows[0][columnId(heure)], '12:00');
 });
 
 Deno.test('L48 : le CSV conserve la representation ISO des dates, jamais la serie Excel', () => {
