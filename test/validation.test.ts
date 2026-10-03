@@ -78,6 +78,17 @@ describe('controles par champ (bornes, listes)', () => {
     expect(validateField(datetime, '2024-02-29 10:15')).toMatch(/date/i);
     expect(validateField(datetime, '2024-02-29T24:00')).toMatch(/date/i);
   });
+  test('heure seule : HH:MM ou HH:MM:SS, sans date ni fuseau', () => {
+    const time = field({ fieldKey: 'heure_incision', type: 'time' });
+    expect(validateField(time, '08:30')).toBeNull();
+    expect(validateField(time, '23:59:59')).toBeNull();
+    expect(validateField(time, '00:00')).toBeNull();
+    expect(validateField(time, '24:00')).toMatch(/heure/i);
+    expect(validateField(time, '8:30')).toMatch(/heure/i);
+    expect(validateField(time, '12:60')).toMatch(/heure/i);
+    expect(validateField(time, '2024-02-29T10:15')).toMatch(/heure/i);
+    expect(validateField(time, '10:15Z')).toMatch(/heure/i);
+  });
   test('validateValues agrege les erreurs', () => {
     const errs = validateValues([gcs], { glasgow_score: 99 });
     expect(errs).toHaveLength(1);
@@ -92,6 +103,13 @@ describe('regles de coherence (§10, critere 4)', () => {
   test('comparaison de dates : sortie < admission -> bloquant', () => {
     expect(evaluateRules([cmp], { admission_date: '2024-01-05', discharge_date: '2024-01-01' }).blocking).toContain('sortie >= admission');
     expect(evaluateRules([cmp], { admission_date: '2024-01-05', discharge_date: '2024-01-10' }).blocking).toHaveLength(0);
+  });
+
+  test('comparaison d\'heures : fermeture avant incision -> bloquant, secondes optionnelles', () => {
+    const hours = { rule: { operator: 'greater_than', left_field: 'heure_fermeture', right_field: 'heure_incision' }, message: 'fermeture > incision', severity: 'block' as const };
+    expect(evaluateRules([hours], { heure_incision: '14:00', heure_fermeture: '09:30' }).blocking).toContain('fermeture > incision');
+    expect(evaluateRules([hours], { heure_incision: '09:30', heure_fermeture: '14:00' }).blocking).toHaveLength(0);
+    expect(evaluateRules([hours], { heure_incision: '09:30:00', heure_fermeture: '09:30' }).blocking).toContain('fermeture > incision');
   });
 
   test('regle inapplicable si un operande absent', () => {

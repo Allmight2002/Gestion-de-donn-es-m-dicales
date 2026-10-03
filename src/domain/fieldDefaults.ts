@@ -8,13 +8,13 @@ import type { FieldType, TemplateField } from '../data/types';
 
 /** Date du jour, resolue A LA SAISIE : une date figee dans le gabarit vieillirait. */
 export const TODAY_TOKEN = '__today__';
-/** Idem pour une date + heure. */
+/** Idem pour une date + heure, ou une heure seule. */
 export const NOW_TOKEN = '__now__';
 
 /** Types acceptant une proposition. `multiselect` et `terminology` en sont exclus cote base :
  *  proposer un diagnostic ou un jeu de modalites ne fait pas gagner une frappe, il repond. */
 export const DEFAULTABLE_TYPES: FieldType[] = [
-  'text', 'number', 'integer', 'date', 'datetime', 'boolean', 'select',
+  'text', 'number', 'integer', 'date', 'datetime', 'time', 'boolean', 'select',
 ];
 
 export const supportsDefaultValue = (type: FieldType) => DEFAULTABLE_TYPES.includes(type);
@@ -23,7 +23,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
 // Heure LOCALE, jamais UTC : a Ndjamena, une consultation saisie a 00h30 doit porter la
 // date du jour local, pas celle de la veille a Greenwich.
 const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const localDateTime = (d: Date) => `${localDate(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const localTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const localDateTime = (d: Date) => `${localDate(d)}T${localTime(d)}`;
 
 const stripAccents = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 
@@ -74,6 +75,8 @@ export function resolveDefaultValue(field: TemplateField, now: Date = new Date()
       return raw === TODAY_TOKEN ? localDate(now) : raw;
     case 'datetime':
       return raw === NOW_TOKEN ? localDateTime(now) : raw;
+    case 'time':
+      return raw === NOW_TOKEN ? localTime(now) : raw;
     default:
       return raw;
   }

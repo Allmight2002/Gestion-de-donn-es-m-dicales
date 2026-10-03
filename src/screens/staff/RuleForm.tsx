@@ -44,7 +44,7 @@ const DATE_OPERATOR_KEYS: Record<ComparisonOperator, MessageKey> = {
 };
 
 function isDateField(field: TemplateField | undefined) {
-  return field?.type === 'date' || field?.type === 'datetime';
+  return field?.type === 'date' || field?.type === 'datetime' || field?.type === 'time';
 }
 
 /**
@@ -573,7 +573,9 @@ export function RuleForm({
         ? 'date'
         : selectedConditionField?.type === 'datetime'
           ? 'datetime-local'
-          : 'text';
+          : selectedConditionField?.type === 'time'
+            ? 'time'
+            : 'text';
     return (
       <label className="flex flex-col text-xs text-slate-600">
         {t('rule.condition_value')}

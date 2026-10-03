@@ -28,7 +28,7 @@ import { Checkbox } from '../../components/Checkbox';
 import { HelpDetails } from '../../components/HelpTip';
 
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
-const TYPES: FieldType[] = ['number', 'integer', 'text', 'date', 'datetime', 'boolean', 'select', 'multiselect', 'terminology'];
+const TYPES: FieldType[] = ['number', 'integer', 'text', 'date', 'datetime', 'time', 'boolean', 'select', 'multiselect', 'terminology'];
 const ENCOUNTER_TYPES = ['consultation', 'hospitalisation', 'suivi', 'autre'] as const;
 
 const inputCls = 'input';
@@ -209,7 +209,8 @@ export function FieldForm({
   const defaultRisk = allowsDefault && trimmedDefault ? defaultValueRisk({ fieldKey, label, type }) : null;
   // Une date fixee dans un gabarit vieillit ; le constructeur ne propose donc que le jeton
   // dynamique. Une valeur litterale deja enregistree reste offerte pour ne pas l'effacer.
-  const dateToken = type === 'datetime' ? NOW_TOKEN : TODAY_TOKEN;
+  const dateToken = type === 'datetime' || type === 'time' ? NOW_TOKEN : TODAY_TOKEN;
+  const temporalDefault = type === 'date' || type === 'datetime' || type === 'time';
 
   // --- L35 : assemblage et verification de la formule ------------------------------------
   // L67 §5 — dans un bloc REPETABLE, le discriminant est le BLOC : ses variables sont toutes
@@ -244,7 +245,7 @@ export function FieldForm({
   // Une variable deja utilisee ne bascule pas en calculee : les valeurs deja saisies sous sa
   // cle seraient masquees par un calcul, sans etre effacees ni signalees (la base le refuse).
   const canCalculate = !lockStructural && candidates.length > 0;
-  const literalDateDefault = (type === 'date' || type === 'datetime') && trimmedDefault && trimmedDefault !== dateToken
+  const literalDateDefault = temporalDefault && trimmedDefault && trimmedDefault !== dateToken
     ? trimmedDefault
     : null;
 
@@ -686,7 +687,7 @@ export function FieldForm({
         <div className="mt-2 flex flex-col gap-1">
           <label htmlFor="field-default" className="form-label">
             {t('admin.field_default')}
-            {type === 'date' || type === 'datetime' ? (
+            {temporalDefault ? (
               <select
                 id="field-default"
                 aria-label={t('admin.field_default')}
@@ -696,7 +697,7 @@ export function FieldForm({
               >
                 <option value="">{t('admin.field_default_none')}</option>
                 <option value={dateToken}>
-                  {t(type === 'datetime' ? 'admin.field_default_now' : 'admin.field_default_today')}
+                  {t(type === 'date' ? 'admin.field_default_today' : type === 'time' ? 'admin.field_default_now_time' : 'admin.field_default_now')}
                 </option>
                 {literalDateDefault && <option value={literalDateDefault}>{literalDateDefault}</option>}
               </select>
