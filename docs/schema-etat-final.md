@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261003230000_completion_queue_visibility_rate.sql`
-- Tables : 60 · Policies RLS : 72 · Triggers : 151 · Fonctions : 428
+- Dernière migration incluse : `20261004090000_time_field_type.sql`
+- Tables : 60 · Policies RLS : 72 · Triggers : 151 · Fonctions : 429
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1601,6 +1601,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | is_saisisseur | — | DEFINER | sql |
 | is_strict_date_text | p_value text | INVOKER | plpgsql |
 | is_strict_datetime_text | p_value text | INVOKER | plpgsql |
+| is_strict_time_text | p_value text | INVOKER | sql |
 | is_system_admin | — | DEFINER | sql |
 | issue_base_purge_challenge | p_base_id uuid, p_operation_id uuid | DEFINER | plpgsql |
 | jsonb_matches | p_data jsonb, p_conds jsonb | INVOKER | plpgsql |

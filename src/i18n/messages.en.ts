@@ -545,6 +545,7 @@ export const messages = {
     'fieldtype.number': 'Decimal number',
     'fieldtype.date': 'Date',
     'fieldtype.datetime': 'Date and time',
+    'fieldtype.time': 'Time',
     'date.choose': 'Choose a date',
     'date.picker_label': 'Date picker',
     'date.no_date': 'No date selected',
@@ -758,6 +759,7 @@ export const messages = {
     'admin.field_default_none': 'None',
     'admin.field_default_today': "Today's date",
     'admin.field_default_now': 'Date and time of entry',
+    'admin.field_default_now_time': 'Time of entry',
     'admin.field_default_warn_clinical':
       'Clinical judgement: without review, the suggested answer will be saved as is.',
     'admin.field_default_warn_shape':
@@ -1183,6 +1185,7 @@ export const messages = {
     'cohort.value_int': '“{field}” is an integer: enter a whole number (e.g. 42).',
     'cohort.value_num': '“{field}” is a number: enter a numeric value (e.g. 12.5).',
     'cohort.value_date': '“{field}” is a date: use the YYYY-MM-DD format.',
+    'cohort.value_time': '“{field}” is a time: use the HH:MM format.',
     'cohort.live_count_loading': 'Calculating the current count…',
     'cohort.dynamic_export_hint': 'This cohort changes automatically. Freeze it before exporting.',
     'cohort.freeze_now': 'Freeze now',

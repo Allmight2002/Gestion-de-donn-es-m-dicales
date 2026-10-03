@@ -27,7 +27,7 @@ export interface PreparationTemplateRepository extends TemplateRepository {
 type DefinitionEntry = Record<string, unknown>;
 
 const FIELD_TYPES: TemplateField['type'][] = [
-  'text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect', 'terminology',
+  'text', 'integer', 'number', 'date', 'datetime', 'time', 'boolean', 'select', 'multiselect', 'terminology',
 ];
 
 function clone<T>(value: T): T {

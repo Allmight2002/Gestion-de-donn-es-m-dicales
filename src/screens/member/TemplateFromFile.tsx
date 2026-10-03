@@ -13,7 +13,7 @@ import { TemplateVersionEditor } from '../staff/TemplateVersionEditor';
 import { fieldTypeLabel } from '../../domain/templateLabels';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 Mo : on ne lit qu'une STRUCTURE, pas un gros jeu de donnees
-const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect'];
+const TYPES: FieldType[] = ['text', 'integer', 'number', 'date', 'datetime', 'time', 'boolean', 'select', 'multiselect'];
 const SCOPES: FieldScope[] = ['patient', 'encounter'];
 // L31 : le jeu de variables n'existe pas encore, donc ses sections non plus. L'assistant
 // part des trois sections historiques, que le constructeur permettra ensuite de renommer,
