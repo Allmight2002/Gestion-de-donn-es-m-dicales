@@ -1,5 +1,5 @@
 -- =============================================================================
--- 20261003120000_completion_queue_visibility_rate.sql
+-- 20261003230000_completion_queue_visibility_rate.sql
 --
 -- 1. File « A completer » (`base_completion_queue_page`) et compteur `incomplete` de
 --    `my_todo_counts` : une seule definition, `record_completion_summary`.

@@ -127,7 +127,9 @@ export interface PurgeChallengeReceipt {
   operationId?: string;
 }
 
-export const FORM_PREPARATION_MAX_BYTES = 256 * 1024;
+// Borne de requête de `save_form_preparation` (1 Mio). Le stockage du candidat
+// est borné séparément côté serveur (4 Mio).
+export const FORM_PREPARATION_MAX_BYTES = 1024 * 1024;
 
 const PREPARATION_MESSAGES: Record<string, string> = {
   FORM_PREPARATION_FORBIDDEN: 'Vos droits ne permettent pas de gérer la préparation de ce formulaire.',
