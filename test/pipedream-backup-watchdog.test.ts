@@ -135,3 +135,33 @@ describe("détecteur Pipedream d'absence de sauvegarde staging", () => {
     expect(email.text).not.toMatch(/token|patient/i);
   });
 });
+
+describe('surveillance production distincte des alertes', () => {
+  const now = new Date('2026-10-02T12:00:00Z');
+  function api(jobs: unknown[]) {
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/jobs?')) return jsonResponse({ jobs });
+      if (url.includes('/runs?')) return jsonResponse({ workflow_runs: [{
+        id: 123, status: 'in_progress', head_branch: 'main', created_at: '2026-10-02T02:17:00Z',
+      }] });
+      return jsonResponse({ default_branch: 'main' });
+    });
+  }
+  const backup = { name: 'backup (production)', status: 'completed', conclusion: 'success', completed_at: '2026-10-02T03:00:00Z' };
+  const copy = { name: 'preserve-copy (production)', status: 'completed', conclusion: 'success' };
+  test('exige la copie durable et ne confond pas staging et production', async () => {
+    for (const jobs of [[backup], [{ ...backup, name: 'backup (staging)' }, copy]]) {
+      expect(await checkBackupFreshness({ target: 'production', token: 'fake', now, fetchImpl: api(jobs) })).toMatchObject({ ok: false, errorCode: 'backup-missing' });
+    }
+    expect(await checkBackupFreshness({ target: 'production', token: 'fake', now, fetchImpl: api([backup, copy, { name: 'alert (production)', conclusion: 'failure' }]) })).toMatchObject({ ok: true, target: 'production' });
+  });
+  test('refuse les dates futures, respecte le seuil et borne le test', async () => {
+    expect(await checkBackupFreshness({ target: 'production', token: 'fake', now, maxAgeHours: 8, fetchImpl: api([backup, copy]) })).toMatchObject({ ok: false });
+    expect(await checkBackupFreshness({ target: 'production', token: 'fake', now, fetchImpl: api([{ ...backup, completed_at: '2026-10-03T00:00:00Z' }, copy]) })).toMatchObject({ ok: false });
+    const fetchImpl = vi.fn();
+    const result = await checkBackupFreshness({ target: 'production', now, forceTestAlert: true, fetchImpl });
+    expect(buildWatchdogEmail(result).subject).toContain('MedData production');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});

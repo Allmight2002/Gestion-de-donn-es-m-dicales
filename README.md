@@ -377,6 +377,14 @@ d'exemple, et des cas de curation de démonstration.
   d'image, changement d'accès, invitation, figement de cohorte, export, suppression,
   publication de gabarit.
 - **`service_role` jamais dans le frontend** — voir §3.
+- **Lecture signée côté serveur** : `signed-read` dispose de SELECT limité à
+  `patient(id, base_id)` et d'INSERT sur les cinq colonnes de son événement d'audit.
+  Ces droits ne donnent pas aux clients la possibilité de signer un fichier ;
+  l'autorisation RLS et l'audit réussi restent exigés avant délivrance de l'URL.
+- **Continuité** : le [runbook](docs/continuite-production-runbook.md) décrit les
+  backups v2 DB/Auth/Storage, les clés et la reprise locale fictive. Le cron production
+  proposé exige une activation explicite ; sa présence dans le code ne prouve pas
+  qu'une sauvegarde ou une alerte production est opérationnelle.
 - **Limite à ne pas survendre** : la RLS empêche l'accès *applicatif* aux identités ;
   l'administrateur du serveur peut techniquement lire la base. Une garantie forte suppose un
   chiffrement côté client ou des identités hors serveur central (hors périmètre MVP).

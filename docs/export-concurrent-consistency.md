@@ -131,6 +131,14 @@ ne change qu'après le commit et reste identique après l'annulation de l'autre 
   SheetJS bloqué est remplacé temporairement par le module 0.20.3 vendorié, sans modification
   des manifestes/lockfiles du dépôt. La CI normale doit confirmer le résultat sur `develop`.
 
+Après reprise de `develop` à `ac31434` (continuité/restauration et dernière correction UI),
+le snapshot de schéma a été régénéré pour résoudre le conflit. **68 tests dans 8 fichiers**
+réunissant les révisions d'export, groupes répétables, sauvegarde coordonnée, configuration
+isolée de restauration, ACL et réconciliation de schémas passent ensemble. TypeScript et
+lint global passent également. Les scripts de continuité et leurs workflows sont exactement
+ceux de `develop`, sans modification de ce chantier. Ces tests ne remplacent pas l'exercice
+complet de restauration avec exports CSV/XLSX décrit dans la condition avant fusion.
+
 ## Validation locale initiale
 
 - Tests DB ciblés : 82 tests passés dans 7 fichiers, dont 23 nouveaux tests de révisions.
