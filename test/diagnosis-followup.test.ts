@@ -356,6 +356,35 @@ describe('L56 file de suivi', () => {
     expect((await followupAs(alice, baseId, { scope: 'encounter' })).total).toBe(0);
   });
 
+  // La file pre-calcule par version la validite des codes reconnus, les reduit aux codes
+  // saisis et pre-calcule les blocs de chaque code. Le resultat de chaque dossier doit rester
+  // CELUI du calcul de reference `diagnosis_coverage`, qui ne pre-calcule rien.
+  test('parite : chaque dossier de la file a la couverture de diagnosis_coverage', async () => {
+    const { baseId } = await makeBase('L56 parite');
+    const create = async (code: string, data: object) =>
+      (await rowsAs(alice, CREATE_PAT, [baseId, code, null, null, null, null, null, JSON.stringify(data)]))[0];
+    const p = await create('Q-01', { ...SOCLE, diagnostics: ['A', 'C'], mesure: 'valeur fictive' });
+    await create('Q-02', { ...SOCLE, diagnostics: ['B', 'C', 'D'], mesure: 'valeur fictive', mesure_bis: 'valeur fictive',
+      diagnostics_autre: 'Texte fictif' });
+    await create('Q-03', { ...SOCLE, diagnostics: ['C'] });
+    await rowsAs(alice, CREATE_ENC, [p.id, 'suivi', '2026-04-01', 'complete',
+      JSON.stringify({ ...ENC_SOCLE, enc_diag: ['B', 'C'] }), 'years']);
+
+    const page = await followupAs(alice, baseId);
+    expect(page.items.map((i) => `${i.patientCode}:${i.scope}`))
+      .toEqual(['Q-01:patient', 'Q-01:encounter', 'Q-02:patient', 'Q-03:patient']);
+    for (const item of page.items) {
+      const table = item.scope === 'patient' ? 'patient' : 'encounter';
+      const id = item.scope === 'patient' ? item.patientId : item.encounterId;
+      const reference = (await rowsAs(alice,
+        `select public.diagnosis_coverage(r.template_version_id, $2, r.data) as c from public.${table} r where r.id = $1`,
+        [id, item.scope]))[0].c as { counts: Record<string, number>; diagnostics: { code: string | null; status: string }[] };
+      expect(item.counts).toEqual(reference.counts);
+      expect(item.uncoveredCodes).toEqual(
+        reference.diagnostics.filter((d) => d.status === 'uncovered').map((d) => d.code).sort());
+    }
+  });
+
   test('base sans configuration diagnostique : file vide, comportement historique intact', async () => {
     const templateId = (await db.admin.query(
       "insert into template(name,owner_user_id,is_global) values('L56 sans config',$1,false) returning id", [alice])).rows[0].id;

@@ -56,7 +56,7 @@ describe('B2 base_completion_queue (file « a completer »)', () => {
     expect(encItem.missing).not.toContain(await byLabel('admission_date'));
   });
 
-  test('exclut les brouillons sans champ requis manquant et pagine le resultat', async () => {
+  test('exclut les brouillons complets et pagine le resultat', async () => {
     await rowsAs(aliceId, CREATE_PAT, [
       baseId,
       'B2-FULL',
@@ -65,7 +65,9 @@ describe('B2 base_completion_queue (file « a completer »)', () => {
       null,
       null,
       null,
-      JSON.stringify({ sexe: 'F', birth_year: 1980 }),
+      // Toutes les variables patient affichees documentees : ni obligatoire manquante, ni
+      // taux sous 75 %.
+      JSON.stringify({ sexe: 'F', birth_year: 1980, blood_group: 'O+' }),
     ]);
     const p2 = await rowsAs(aliceId, CREATE_PAT, [
       baseId,
