@@ -12,7 +12,8 @@ import { formatDate } from '../../lib/formatDate';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
 
-// B2 v1 — file de travail « a completer » : dossiers non finalises + champs requis manquants,
+// B2 v1 — file de travail « a completer » : dossiers non finalises auxquels manque un champ
+// requis affiche, ou dont moins de 75 % des champs affiches sont renseignes (calcul serveur),
 // avec acces direct au bon formulaire. La completion devient un flux visible d'equipe.
 const PAGE_SIZE = 50;
 
@@ -102,6 +103,14 @@ export function CompletionQueue() {
               </span>
               <StatusBadge status={it.status} />
               <span className="min-w-0 flex-1" />
+              {it.displayedFields != null && it.displayedFields > 0 && it.filledFields != null && (
+                <span className="text-xs text-slate-500">
+                  {t('queue.completion')
+                    .replace('{filled}', String(it.filledFields))
+                    .replace('{total}', String(it.displayedFields))
+                    .replace('{pct}', String(Math.floor((it.filledFields * 100) / it.displayedFields)))}
+                </span>
+              )}
               {it.missing.length > 0 && (
                 <span className="flex flex-wrap items-center gap-1">
                   <span className="text-xs text-slate-400">{t('queue.missing')} :</span>

@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261003220000_form_preparation_storage_bound.sql`
-- Tables : 60 · Policies RLS : 72 · Triggers : 151 · Fonctions : 424
+- Dernière migration incluse : `20261003230000_completion_queue_visibility_rate.sql`
+- Tables : 60 · Policies RLS : 72 · Triggers : 151 · Fonctions : 428
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1450,6 +1450,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | delete_template_field | p_field_id uuid | DEFINER | plpgsql |
 | delete_work_draft | p_id uuid, p_expected_revision bigint, p_operation_id uuid | DEFINER | plpgsql |
 | detect_import_duplicates | p_base_id uuid, p_rows jsonb | DEFINER | plpgsql |
+| diagnosis_code_blocks | p_version_id uuid, p_scope text, p_field_key text, p_release jsonb, p_item jsonb | INVOKER | sql |
 | diagnosis_coverage | p_version_id uuid, p_scope text, p_data jsonb | INVOKER | sql |
 | diagnosis_coverage_in_context | p_version_id uuid, p_scope text, p_data jsonb, p_context jsonb | INVOKER | plpgsql |
 | diagnosis_followup | p_base_id uuid, p_scope text, p_version_id uuid, p_code text, p_limit integer, p_offset integer | INVOKER | plpgsql |
@@ -1674,6 +1675,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | recompute_encounter_age | — | DEFINER | plpgsql |
 | reconcile_mission_profile | p_user_id uuid | DEFINER | plpgsql |
 | record_client_error | p_occurred_at timestamp with time zone, p_name text, p_message text, p_stack text, p_component_stack text, p_context text, p_app_version text, p_severity text | DEFINER | plpgsql |
+| record_completion_summary | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text, p_group_section_key text | INVOKER | plpgsql |
 | record_quarantine_move | p_entity text, p_entity_id uuid, p_run_id uuid, p_user_id uuid, p_base_id uuid, p_source_bucket text, p_source_path text, p_quarantine_bucket text, p_quarantine_path text, p_engine text, p_signature text, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_extra jsonb | DEFINER | plpgsql |
 | refresh_patient_inclusion_date | p_patient_id uuid | DEFINER | sql |
 | reject_cross_sectional_encounter | — | DEFINER | plpgsql |
@@ -1705,6 +1707,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | rule_calculated_field_label | p_version_id uuid, p_field_key text | INVOKER | sql |
 | rule_calculated_operand_message | p_problem text, p_label text | INVOKER | sql |
 | rule_cmp | a jsonb, b jsonb | INVOKER | plpgsql |
+| rule_contains_any_hit | a jsonb, b jsonb | INVOKER | plpgsql |
+| rule_contains_any_target_valid | b jsonb | INVOKER | plpgsql |
 | rule_holds | rule jsonb, data jsonb | INVOKER | sql |
 | rule_holds | rule jsonb, data jsonb, hidden text[] | INVOKER | plpgsql |
 | rule_operand_positions | p_rule jsonb | INVOKER | sql |
