@@ -332,7 +332,7 @@ const templates = strict<TemplateRepository>('templates', {
 const patients = strict<PatientRepository>('patients', {
   async listPatients() { return rows; },
   async listPatientsPage() { return { rows, total: rows.length }; },
-  async searchPatientIdsByIdentity() { return { ids: [], total: 0 }; },
+  async searchPatientIds() { return { ids: [], total: 0 }; },
   // Comme le vrai depot depuis le lot 8 : la fiche arrive sans identite, lue au toucher.
   async getPatient(_baseId: string, id: string) { return id === patient.id ? { ...patient, identity: null } : null; },
   async getPatientIdentity(id: string) { return id === patient.id ? patient.identity : null; },

@@ -329,14 +329,15 @@ export interface PatientRepository {
     baseId: string, limit: number, offset: number, options?: PatientListQuery,
   ): Promise<{ rows: PatientListItem[]; total: number }>;
   /**
-   * UX-12(c) — identifiants des patients de cette base dont le NOM correspond au terme.
+   * Recherche globale — identifiants des patients de cette base dont le CODE, ou le NOM si
+   * l'appelant y a droit, contient le terme. Ordre du code.
    *
-   * Le serveur vérifie le rôle et la permission d'identité sur cette base, journalise l'accès
-   * sans le terme, et ne rend que des identifiants : aucun nom ne traverse cette frontière.
-   * Absente quand le serveur ignore encore l'opération ; l'écran garde alors la recherche par
-   * code et annonce l'indisponibilité, au lieu d'émettre une requête qui échouerait.
+   * Le serveur vérifie le rôle et la permission d'identité sur cette base pour la partie
+   * nominative, journalise cet accès sans le terme, et ne rend que des identifiants : aucun nom
+   * ne traverse cette frontière. Absente quand le serveur ignore encore l'opération ; l'écran
+   * garde alors la recherche par code et annonce l'indisponibilité de la recherche par nom.
    */
-  searchPatientIdsByIdentity?(
+  searchPatientIds?(
     baseId: string, term: string, limit: number, offset: number,
   ): Promise<{ ids: string[]; total: number }>;
   /** §8 — Instantane ANALYTIQUE complet (patients + rencontres + champs) en UN appel (hors-ligne). */
@@ -629,10 +630,10 @@ export function makePatientRepository(client: SupabaseClient | null): PatientRep
       return { rows: rows.map(toListItem), total: legacy.count ?? rows.length };
     },
 
-    async searchPatientIdsByIdentity(baseId, term, limit, offset) {
+    async searchPatientIds(baseId, term, limit, offset) {
       // RG-9 : la réponse ne contient que des identifiants et un total. Les lignes affichées
       // sont ensuite relues par le chemin analytique habituel, sous la RLS.
-      const { data, error } = await client.rpc('search_patient_ids_by_identity', {
+      const { data, error } = await client.rpc('search_patient_ids', {
         p_base_id: baseId, p_term: term, p_limit: limit, p_offset: offset,
       });
       if (error) throw error;
