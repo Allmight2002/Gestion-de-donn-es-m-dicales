@@ -15,3 +15,5 @@ export function validateManifest(manifest: unknown): {
   totalBytes: number;
 };
 
+
+export function validateStorageRestoreTarget(value: string, env?: Partial<Record<string, string | undefined>>): void;

@@ -35,7 +35,8 @@ export function validateRecoveryEvidence(evidence, {
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
     return ['La preuve de reprise doit etre un objet JSON.'];
   }
-  if (evidence.format !== FORMAT) errors.push(`format doit valoir ${FORMAT}.`);
+  const complete = evidence.format === 'meddata-recovery-evidence/v2';
+  if (evidence.format !== FORMAT && !complete) errors.push(`format doit valoir ${FORMAT} ou meddata-recovery-evidence/v2.`);
   if (evidence.environment !== 'staging-isolated') {
     errors.push('environment doit valoir staging-isolated.');
   }
@@ -103,6 +104,30 @@ export function validateRecoveryEvidence(evidence, {
   if (restore.hashMismatches !== 0) errors.push('La restauration contient des divergences de hash.');
   if (restore.orphanCount !== 0) errors.push('La restauration contient des orphelins referentiels.');
 
+  if (complete) {
+    for (const key of ['accountsExpected', 'accountsRestored', 'documentLinksChecked']) {
+      if (!positiveInteger(restore[key])) errors.push(`restore.${key} doit etre un entier strictement positif.`);
+    }
+    if (restore.accountsExpected !== restore.accountsRestored) errors.push('Tous les comptes attendus ne sont pas restaures.');
+    for (const key of ['databaseContentsMatch', 'grantsMatch', 'policiesMatch']) {
+      if (restore[key] !== true) errors.push(`restore.${key} doit etre vrai.`);
+    }
+    if (restore.storageOrphanCount !== 0) errors.push('La restauration contient des orphelins Storage.');
+    for (const key of ['read', 'modify', 'fileOpen']) {
+      if (evidence.journeys?.[key] !== true) errors.push(`journeys.${key} doit etre vrai.`);
+    }
+    const backupStartedAt = Date.parse(source.backupStartedAt ?? '');
+    const incidentAt = Date.parse(timing.incidentAt ?? '');
+    if (!Number.isFinite(backupStartedAt) || !Number.isFinite(incidentAt) || incidentAt < backupStartedAt) {
+      errors.push('Fenetre de mesure de perte potentielle invalide.');
+    } else if (timing.observedRpoSeconds !== Math.ceil((incidentAt - backupStartedAt) / 1000)) {
+      errors.push('Le RPO doit mesurer la perte potentielle depuis le debut du backup.');
+    }
+    if (timing.observedRtoSeconds !== Math.ceil((completedAtMs - startedAtMs) / 1000)) {
+      errors.push('Le RTO doit correspondre a la fenetre de reprise mesuree.');
+    }
+  }
+
   const recovery = evidence.recovery ?? {};
   for (const key of ['frontendRollback', 'edgeRollback', 'storagePolicyReapply', 'forwardMigration']) {
     if (recovery[key] !== true) errors.push(`recovery.${key} doit etre vrai.`);
@@ -141,8 +166,11 @@ async function main() {
     throw new Error('Le fichier de preuve n est pas un JSON valide.');
   }
   const errors = validateRecoveryEvidence(evidence, { expectedCommit });
+  if (process.argv.includes('--require-complete') && evidence.format !== 'meddata-recovery-evidence/v2') {
+    errors.push('Une preuve v2 des comptes, liens, droits et parcours fichier est requise.');
+  }
   if (errors.length) throw new Error(`Preuve de reprise refusee:\n- ${errors.join('\n- ')}`);
-  console.log(`Preuve de reprise: OK (commit ${expectedCommit.slice(0, 12)}, contenu sensible absent).`);
+  console.log(`Preuve de reprise: OK (commit ${expectedCommit.slice(0, 12)}, structure validee; observations a verifier separement).`);
 }
 
 const isMain = process.argv[1]

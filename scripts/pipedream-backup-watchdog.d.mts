@@ -1,6 +1,6 @@
 export interface BackupWatchdogResult {
   ok: boolean;
-  target: 'staging';
+  target: 'staging' | 'production';
   check: 'continuity-backup';
   observedAt: string;
   maxAgeHours: number;
@@ -11,6 +11,8 @@ export interface BackupWatchdogResult {
 }
 
 export interface BackupWatchdogOptions {
+  target?: 'staging' | 'production';
+  maxAgeHours?: number;
   token?: string;
   now?: Date | string | number;
   fetchImpl?: typeof fetch;
