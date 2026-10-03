@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261003203222_export_revision_independent_writers.sql`
-- Tables : 60 · Policies RLS : 72 · Triggers : 151 · Fonctions : 422
+- Dernière migration incluse : `20261003220000_form_preparation_storage_bound.sql`
+- Tables : 60 · Policies RLS : 72 · Triggers : 151 · Fonctions : 424
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1494,9 +1494,11 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_preparation_classify | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
 | form_preparation_error_json | p_code text, p_preparation_id uuid, p_operation_id uuid, p_retryable boolean | DEFINER | sql |
 | form_preparation_fingerprint | p_value jsonb | DEFINER | sql |
+| form_preparation_index_by_key | p_items jsonb, p_key text | INVOKER | sql |
 | form_preparation_json | p_row form_preparation | DEFINER | sql |
 | form_preparation_jsonb_array_subset | p_subset jsonb, p_superset jsonb | DEFINER | plpgsql |
 | form_preparation_normalize | p_payload jsonb | DEFINER | plpgsql |
+| form_preparation_normalize | p_payload jsonb, p_max_bytes integer | DEFINER | plpgsql |
 | form_preparation_operation_result | p_operation_id uuid, p_request_hash text | DEFINER | plpgsql |
 | form_preparation_order_array | p_value jsonb, p_key text | DEFINER | plpgsql |
 | form_preparation_rebind_allowed | p_base_id uuid, p_old_version_id uuid, p_new_version_id uuid | DEFINER | sql |

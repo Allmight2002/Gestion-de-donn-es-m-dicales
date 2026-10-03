@@ -136,7 +136,7 @@ describe('E1 préparations de formulaire : contrat serveur', () => {
 
   test('refuse taille et contenu clinique avant toute écriture', async () => {
     const source = await freshPayload();
-    const tooLarge = { ...source.payload, provenance: { note: 'x'.repeat(300_000) } };
+    const tooLarge = { ...source.payload, provenance: { note: 'x'.repeat(1_100_000) } };
     const tooLargeId = randomUUID();
     await expect(rowsAs(aliceId,
       'select public.save_form_preparation($1,$2,$3,$4,$5,$6,$7::jsonb) as result',
