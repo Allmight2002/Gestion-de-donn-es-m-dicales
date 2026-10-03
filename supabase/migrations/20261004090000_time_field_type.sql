@@ -1,5 +1,5 @@
 -- =============================================================================
--- 20261003090000_time_field_type.sql  (type de variable « heure »)
+-- 20261004090000_time_field_type.sql  (type de variable « heure »)
 --
 -- POURQUOI. Une heure d'incision, de fermeture ou d'admission etait saisie comme une
 -- « date et heure » : la date y etait redondante avec celle de la consultation, et
@@ -16,7 +16,7 @@
 --   * rule_cmp                                  (20260616095300)
 --   * form_record_assert_json_type              (20260916140000)
 --   * create_template_bundle                    (20261001170000)
---   * form_preparation_apply_assert_definition  (20260916130000)
+--   * form_preparation_apply_assert_definition  (20261003220000)
 -- `create or replace` conserve proprietaire, grants et revokes existants.
 -- Hors perimetre, volontairement : les formules (une heure seule n'a pas de duree
 -- calculable sans date) et le tri de la liste patients, qui refusent ce type comme tout
@@ -581,6 +581,10 @@ declare
   v_section text;
   v_group text;
   v_source_field jsonb;
+  v_root_sections jsonb;
+  v_sections jsonb;
+  v_groups jsonb;
+  v_source_fields jsonb;
 begin
   if jsonb_typeof(p_candidate) is distinct from 'object' then
     raise exception using errcode = 'P0001', message = 'FORM_PREPARATION_INVALID',
@@ -618,15 +622,20 @@ begin
     raise exception using errcode = 'P0001', message = 'FORM_CHANGE_UNSUPPORTED',
       detail = '{"code":"FORM_CHANGE_UNSUPPORTED","reason":"duplicate_section_key"}';
   end if;
+  -- Une section enfant doit désigner une section racine du candidat.
+  select coalesce(jsonb_object_agg(r.root_key, true), '{}'::jsonb)
+    into v_root_sections
+    from (
+      select distinct p.value ->> 'sectionKey' as root_key
+        from jsonb_array_elements(coalesce(p_candidate -> 'sections', '[]'::jsonb)) p(value)
+       where p.value ->> 'parentSectionKey' is null
+         and p.value ->> 'sectionKey' is not null
+    ) r;
   if exists (
     select 1
       from jsonb_array_elements(coalesce(p_candidate -> 'sections', '[]'::jsonb)) x(value)
      where x.value ->> 'parentSectionKey' is not null
-       and not exists (
-         select 1 from jsonb_array_elements(coalesce(p_candidate -> 'sections', '[]'::jsonb)) p(value)
-          where p.value ->> 'sectionKey' = x.value ->> 'parentSectionKey'
-            and p.value ->> 'parentSectionKey' is null
-       )
+       and not (v_root_sections ? (x.value ->> 'parentSectionKey'))
   ) then
     raise exception using errcode = 'P0001', message = 'FORM_CHANGE_UNSUPPORTED',
       detail = '{"code":"FORM_CHANGE_UNSUPPORTED","reason":"section_parent_shape"}';
@@ -682,13 +691,12 @@ begin
       detail = '{"code":"FORM_CHANGE_UNSUPPORTED","reason":"duplicate_field_key"}';
   end if;
 
+  v_sections := public.form_preparation_index_by_key(p_candidate -> 'sections', 'sectionKey');
+  v_groups := public.form_preparation_index_by_key(p_candidate -> 'commonGroups', 'groupKey');
   for item in select value from jsonb_array_elements(coalesce(p_candidate -> 'fields', '[]'::jsonb)) loop
     v_section := nullif(item ->> 'sectionKey', '');
     v_group := nullif(item ->> 'commonGroupKey', '');
-    if v_section is not null and not exists (
-      select 1 from jsonb_array_elements(coalesce(p_candidate -> 'sections', '[]'::jsonb)) s(value)
-       where s.value ->> 'sectionKey' = v_section
-    ) then
+    if v_section is not null and not (v_sections ? v_section) then
       raise exception using errcode = 'P0001', message = 'FORM_CHANGE_UNSUPPORTED',
         detail = jsonb_build_object('code','FORM_CHANGE_UNSUPPORTED','reason','unknown_section','sectionKey',v_section)::text;
     end if;
@@ -696,26 +704,19 @@ begin
       raise exception using errcode = 'P0001', message = 'FORM_CHANGE_UNSUPPORTED',
         detail = '{"code":"FORM_CHANGE_UNSUPPORTED","reason":"field_has_two_locations"}';
     end if;
-    if v_group is not null and not exists (
-      select 1 from jsonb_array_elements(coalesce(p_candidate -> 'commonGroups', '[]'::jsonb)) g(value)
-       where g.value ->> 'groupKey' = v_group
-    ) then
+    -- Code d'erreur conservé tel quel depuis 20260916130000 (équivalence stricte).
+    if v_group is not null and not (v_groups ? v_group) then
       raise exception using errcode = 'FORM_CHANGE_UNSUPPORTED', message = 'FORM_CHANGE_UNSUPPORTED',
         detail = jsonb_build_object('code','FORM_CHANGE_UNSUPPORTED','reason','unknown_common_group','groupKey',v_group)::text;
     end if;
-    if v_section is null and v_group is null and exists (
-      select 1 from jsonb_array_elements(coalesce(p_candidate -> 'commonGroups', '[]'::jsonb)) g(value)
-       where coalesce((g.value ->> 'isDefault')::boolean, false)
-    ) then
-      -- Le trigger UX-16 affectera le groupe par défaut si aucun groupe n'est
-      -- fourni. C'est une organisation de présentation, pas une valeur.
-      null;
-    end if;
+    -- Sans section ni groupe, le trigger UX-16 affectera le groupe par défaut :
+    -- c'est une organisation de présentation, pas une valeur. La version
+    -- d'origine évaluait ici une condition sans effet ; elle n'est plus évaluée.
 
-    v_source_field := null;
-    select value into v_source_field
-      from jsonb_array_elements(coalesce(p_source -> 'fields', '[]'::jsonb)) s(value)
-     where s.value ->> 'fieldKey' = item ->> 'fieldKey';
+    if v_source_fields is null then
+      v_source_fields := public.form_preparation_index_by_key(p_source -> 'fields', 'fieldKey');
+    end if;
+    v_source_field := v_source_fields -> (item ->> 'fieldKey');
     if v_source_field is null
        and item ? 'defaultValue'
        and item -> 'defaultValue' <> 'null'::jsonb

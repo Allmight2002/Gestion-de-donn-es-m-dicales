@@ -46,6 +46,16 @@ describe('CompletionQueue (B2)', () => {
     expect(await screen.findByText('EDIT ENCOUNTER')).toBeInTheDocument();
   });
 
+  test('un dossier sous 75 % sans manquant affiche son taux de completion', async () => {
+    const lowRate: CompletionItem[] = [
+      { kind: 'patient', patientId: 'p2', code: 'P-0002', status: 'draft', missing: [], filledFields: 2, displayedFields: 4 },
+    ];
+    const page = vi.fn(async () => ({ items: lowRate, total: 1, limit: 50, offset: 0, hasMore: false }));
+    renderQueue({ getCompletionQueuePage: page } as unknown as PatientRepository);
+    expect(await screen.findByText('2/4 champs affichés renseignés (50 %)')).toBeInTheDocument();
+    expect(screen.queryByText('Manquants :')).not.toBeInTheDocument();
+  });
+
   // Audit UI mobile, lot 0 — une seule page n'affiche plus « 1-2 sur 2 · Précédent · Suivant ».
   test('une seule page : pas de pagination ; plusieurs pages : pagination', async () => {
     const onePage = vi.fn(async () => ({ items, total: items.length, limit: 50, offset: 0, hasMore: false }));

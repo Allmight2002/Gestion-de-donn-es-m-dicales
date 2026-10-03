@@ -54,7 +54,7 @@ export function runSupabaseDump(
   databaseUrl: string,
   file: string,
   extraArguments: string[],
-  stage: 'roles' | 'schema' | 'data' | 'public-data',
+  stage: 'roles' | 'schema' | 'auth-schema' | 'storage-schema' | 'data' | 'public-data',
   options?: {
     execute?: DumpExecutor;
     sourceEnv?: Partial<Record<string, string | undefined>>;
@@ -67,3 +67,10 @@ export function writeAtomicBackupDirectory<T>(
   build: (partial: string) => T | Promise<T>,
   options?: { suffix?: string },
 ): Promise<T>;
+
+export function validateDatabaseCoverage(sql: string): void;
+export function validateDatabaseFileInventory(files: Array<{ file: string }>, format?: string): void;
+
+export function validateCoordinatedStorageSource(env?: Partial<Record<string, string | undefined>>): void;
+
+export function validateCoordinatedSource(target: string, env?: Partial<Record<string, string | undefined>>): { target: string; projectRef: string };

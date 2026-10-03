@@ -1,0 +1,98 @@
+{
+  "format": "meddata-local-recovery-observations/v1",
+  "dataClassification": "fictitious-only",
+  "productionConnected": false,
+  "tablesCompared": 91,
+  "schemasCompared": 3,
+  "schemaDifferences": 0,
+  "tableDifferences": 0,
+  "accountsRestored": 9,
+  "identitiesRestored": 9,
+  "accountLogins": 9,
+  "objectsExpected": 2,
+  "objectsRestored": 2,
+  "hashMismatches": 0,
+  "foreignKeysChecked": 175,
+  "orphanCount": 0,
+  "storageOrphanCount": 0,
+  "linksChecked": 2,
+  "restoredCustomFunction": true,
+  "restoredAuthTrigger": true,
+  "read": true,
+  "modify": true,
+  "authorizationDenial": true,
+  "signedRead": true,
+  "auditTrail": true,
+  "newAuditEvents": 1,
+  "apiJourneysCompletedAt": "2026-10-03T09:04:11.641Z",
+  "resumedJourneysAfterInitialComparison": false,
+  "localGatewayTranslation": true,
+  "browserJourneysCompleted": true,
+  "productionReadinessValidated": false,
+  "objectivesApproved": false,
+  "browserLogin": true,
+  "browserRead": true,
+  "browserModifyPersisted": true,
+  "browserImageLoaded": true,
+  "browserImageNaturalWidth": 32,
+  "browserNewAuditEvents": 1,
+  "checkedAt": "2026-10-03T09:06:07.190Z",
+  "browserAuthorizationDenial": true,
+  "browserJavaScriptErrors": 0,
+  "browserJourneysCompletedAt": "2026-10-03T09:06:57.946Z",
+  "timing": {
+    "backupStartedAt": "2026-10-03T08:58:44.233Z",
+    "backupCompletedAt": "2026-10-03T08:59:50.954Z",
+    "incidentAt": "2026-10-03T08:59:51.123Z",
+    "recoveryStartedAt": "2026-10-03T08:59:51.123Z",
+    "completedAt": "2026-10-03T09:06:57.946Z",
+    "backupElapsedSeconds": 66.721,
+    "rtoSeconds": 427,
+    "conservativePotentialLossSeconds": 67,
+    "firstIncidentAt": "2026-10-03T08:34:45.392Z",
+    "totalResolutionAndNewExerciseSeconds": 1933,
+    "priorIncidentToNewIncidentSeconds": 1505.731,
+    "productionObjectivesApproved": false,
+    "organizationalKeyRecoveryExercised": false
+  },
+  "source": {
+    "baseCommit": "747adef4363ec4720e9ef79c9c9e3a691af6b057",
+    "backupProducerRevision": {
+      "runtimeSourceSha256": "7a981ddc0c07f316d5a6e3b26e24fbab4cb39e178f1cb111895806debd666c47",
+      "workingTreeDirty": true
+    },
+    "backupManifestSha256": "0e014f40a632d4450ee6121e196ba8cac493017adb7a8f6cd92fa30ec48edc1f"
+  },
+  "image": {
+    "cli": "2.109.1",
+    "upstream": "docker.io/supabase/postgres@sha256:80d7b27c3e8d77cfa7226eee9508671796da214781ff15a35b3670d7ad5ee453",
+    "importedLocalImageId": "sha256:77f451874d37012096152a54a10e31900c0ab684c4a4f28261c0326dbf9888d5",
+    "rootfsTarSha256": "1ff6b4a18d9364e2d36be054149953d76c1b7c1e055b94f7992af09c23e86d4f",
+    "originalDockerLayerDigestPreserved": false
+  },
+  "validation": {
+    "targetedTests": 51,
+    "additionalSecurityTests": 9,
+    "globalLint": true,
+    "globalTypecheck": true,
+    "frontendBuild": true,
+    "schemaSnapshotCheck": true,
+    "actionlint": true,
+    "fullCiExecuted": false,
+    "antivirusPipelineExercised": false
+  },
+  "screenshots": [
+    {
+      "file": "meddata-recovery-final-login.png",
+      "sha256": "cc7547384f24ba6eac22a661a070025142e4dae2aefbb3a1e2ae3caf2c876eb9"
+    },
+    {
+      "file": "meddata-recovery-final-image.png",
+      "sha256": "b3206919bb884630f63745d8ff6b588de1bdfe8e867b24d6a1e4be9afb173d00"
+    },
+    {
+      "file": "meddata-recovery-final-denied.png",
+      "sha256": "5f6d62c1e180e51d4f2ba2abcbffab3ac39a1b30487ff2a7c779066087673abb"
+    }
+  ]
+}

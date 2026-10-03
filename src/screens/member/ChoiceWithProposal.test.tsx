@@ -87,3 +87,39 @@ describe('EncounterFields — soupape (F5)', () => {
     expect(onRemove).toHaveBeenCalledWith('diagnostic_autre');
   });
 });
+
+const symptomes = field({
+  fieldKey: 'symptomes',
+  label: 'Symptômes',
+  type: 'multiselect',
+  allowedValues: ['Fièvre', 'Toux'],
+});
+const symptomesAutre = field({ fieldKey: 'symptomes_autre', label: 'Symptômes — valeur proposée', type: 'text' });
+
+function renderMultiple(values: Record<string, unknown> = {}, onChange = vi.fn(), onRemove = vi.fn()) {
+  render(
+    <I18nProvider>
+      <EncounterFields fields={[symptomes, symptomesAutre]} values={values} onChange={onChange} onRemove={onRemove} />
+    </I18nProvider>,
+  );
+  return { onChange, onRemove };
+}
+
+describe('EncounterFields — soupape d un choix multiple', () => {
+  test('demander « Autre » conserve les valeurs deja cochees', async () => {
+    const { onRemove } = renderMultiple({ symptomes: ['Fièvre'] });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Autre — absent de la liste' }));
+    await userEvent.type(screen.getByRole('textbox'), 'D');
+
+    expect(onRemove).not.toHaveBeenCalledWith('symptomes');
+  });
+
+  test('cocher une valeur conserve la proposition deja saisie', async () => {
+    const { onChange, onRemove } = renderMultiple({ symptomes: ['Fièvre'], symptomes_autre: 'Vertiges' });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Toux' }));
+
+    expect(onChange).toHaveBeenCalledWith('symptomes', ['Fièvre', 'Toux']);
+    expect(onRemove).not.toHaveBeenCalledWith('symptomes_autre');
+    expect(screen.getByDisplayValue('Vertiges')).toBeInTheDocument();
+  });
+});

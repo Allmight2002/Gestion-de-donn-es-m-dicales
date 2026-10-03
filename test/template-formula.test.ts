@@ -287,7 +287,6 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // calculees -- il n'analyse jamais leur contenu.
       'assert_diagnosis_configuration',
       'base_completeness_stats',
-      'base_completion_queue_page',
       // L58 : la liste des 21 colonnes recopiees, formule comprise, a quitte
       // `copy_template_fields` pour cette fonction, que la recopie de version ET l'import
       // d'un bloc partagent. `copy_template_fields` ne mentionne donc plus la colonne : elle
@@ -295,10 +294,10 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // la centralisation de L28 avait ete faite pour empecher.
       'copy_template_field_rows',
       // L55 : meme lecture que ci-dessus, cote calcul de couverture. L56 en a extrait le corps
-      // pour que la file de suivi resolve le contexte UNE fois par version au lieu d'une fois
-      // par dossier ; `diagnosis_coverage` n'est plus que l'appel qui resout ce contexte, et
-      // ne mentionne donc plus la colonne.
-      'diagnosis_coverage_in_context',
+      // pour que la file de suivi resolve le contexte UNE fois par version ; la recherche des
+      // blocs d'un code a ensuite quitte `diagnosis_coverage_in_context` pour cette fonction,
+      // calculee une fois par code par la file de suivi.
+      'diagnosis_code_blocks',
       'download_base_snapshot',
       'enforce_template_field_formula',
       'enforce_template_field_formula_operand',
@@ -330,10 +329,10 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // `enforce_template_field_formula` la valide a l'insertion.
       'import_template_definition',
       'missing_required_fields',
-      // Audit UI mobile, lot 8 : compte, pour la page « A faire », les dossiers de la file
-      // « a completer ». Comme base_completion_queue_page, il lit formula seulement pour
-      // exclure les variables calculees des obligations -- il ne l'evalue jamais.
-      'my_todo_counts',
+      // File « a completer » et compteur « A faire » : definition unique d'un dossier a
+      // completer. Lit formula seulement pour exclure les variables calculees des obligations
+      // et du taux de completion -- il ne l'evalue jamais.
+      'record_completion_summary',
       // L32 x L35 : rend le libelle d'une variable SI elle est calculee, sinon null. C'est la
       // seule lecture de la colonne partagee par le refus a l'ecriture d'une regle et par le
       // diagnostic d'une version.
