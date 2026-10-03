@@ -1,6 +1,5 @@
 const REPOSITORY = 'Allmight2002/Gestion-de-donn-es-m-dicales';
 const WORKFLOW = 'continuity-backup.yml';
-const STAGING_JOB = 'backup (staging)';
 const MAX_AGE_HOURS = 30;
 const RUN_LOOKBACK_HOURS = 36;
 const MAX_RUNS = 10;
@@ -23,13 +22,15 @@ function boundedResult({
   latestSuccessAt = null,
   runId = null,
   drill = false,
+  target = 'staging',
+  maxAgeHours = MAX_AGE_HOURS,
 }) {
   return {
     ok,
-    target: 'staging',
+    target,
     check: 'continuity-backup',
     observedAt,
-    maxAgeHours: MAX_AGE_HOURS,
+    maxAgeHours,
     errorCode,
     latestSuccessAt,
     runId,
@@ -72,14 +73,21 @@ export async function checkBackupFreshness({
   now = new Date(),
   fetchImpl = fetch,
   forceTestAlert = false,
+  target = 'staging',
+  maxAgeHours = MAX_AGE_HOURS,
 } = {}) {
+  if (!['staging', 'production'].includes(target)
+      || !Number.isFinite(maxAgeHours) || maxAgeHours <= 0 || maxAgeHours > RUN_LOOKBACK_HOURS) {
+    throw new Error('Politique de surveillance invalide.');
+  }
+  const resultForTarget = (result) => boundedResult({ ...result, target, maxAgeHours });
   const observedAt = new Date(now);
   if (!Number.isFinite(observedAt.getTime())) {
     throw new Error('Date de controle invalide.');
   }
 
   if (forceTestAlert) {
-    return boundedResult({
+    return resultForTarget({
       ok: false,
       observedAt: observedAt.toISOString(),
       errorCode: 'expected-test-alert',
@@ -89,7 +97,7 @@ export async function checkBackupFreshness({
 
   const cleanToken = clean(token);
   if (!cleanToken) {
-    return boundedResult({
+    return resultForTarget({
       ok: false,
       observedAt: observedAt.toISOString(),
       errorCode: 'github-api-unavailable',
@@ -113,7 +121,6 @@ export async function checkBackupFreshness({
     const lookbackStart = observedAt.getTime() - RUN_LOOKBACK_HOURS * 60 * 60 * 1000;
     const candidateRuns = runsPayload.workflow_runs.filter((run) => (
       numericRunId(run?.id)
-      && run?.status === 'completed'
       && run?.head_branch === branch
       && validDate(run?.created_at)
       && Date.parse(run.created_at) >= lookbackStart
@@ -127,16 +134,21 @@ export async function checkBackupFreshness({
         cleanToken,
         fetchImpl,
       );
-      if (!Array.isArray(jobsPayload?.jobs)) {
+      if (!Array.isArray(jobsPayload?.jobs) || jobsPayload.total_count > 100) {
         throw new Error('github-api-unavailable');
       }
 
+      if (target === 'production' && !jobsPayload.jobs.some((job) => (
+        job?.name === `preserve-copy (${target})` && job.status === 'completed'
+        && job.conclusion === 'success'
+      ))) continue;
       for (const job of jobsPayload.jobs) {
         if (
-          job?.name !== STAGING_JOB
+          job?.name !== `backup (${target})`
           || job?.status !== 'completed'
           || job?.conclusion !== 'success'
           || !validDate(job?.completed_at)
+          || Date.parse(job.completed_at) > observedAt.getTime()
         ) {
           continue;
         }
@@ -147,9 +159,9 @@ export async function checkBackupFreshness({
       }
     }
 
-    const maximumAgeMs = MAX_AGE_HOURS * 60 * 60 * 1000;
+    const maximumAgeMs = maxAgeHours * 60 * 60 * 1000;
     if (latest && observedAt.getTime() - latest.completedAt.getTime() <= maximumAgeMs) {
-      return boundedResult({
+      return resultForTarget({
         ok: true,
         observedAt: observedAt.toISOString(),
         latestSuccessAt: latest.completedAt.toISOString(),
@@ -157,7 +169,7 @@ export async function checkBackupFreshness({
       });
     }
 
-    return boundedResult({
+    return resultForTarget({
       ok: false,
       observedAt: observedAt.toISOString(),
       errorCode: 'backup-missing',
@@ -165,7 +177,7 @@ export async function checkBackupFreshness({
       runId: latest?.runId ?? null,
     });
   } catch {
-    return boundedResult({
+    return resultForTarget({
       ok: false,
       observedAt: observedAt.toISOString(),
       errorCode: 'github-api-unavailable',
@@ -174,6 +186,7 @@ export async function checkBackupFreshness({
 }
 
 export function buildWatchdogEmail(result) {
+  const target = result?.target === 'production' ? 'production' : 'staging';
   const isDrill = result?.drill === true;
   const code = isDrill
     ? 'expected-test-alert'
@@ -181,24 +194,24 @@ export function buildWatchdogEmail(result) {
       ? 'github-api-unavailable'
       : 'backup-missing';
   const subject = isDrill
-    ? "[MedData staging] Test d'alerte - Sauvegarde absente"
-    : '[MedData staging] Incident détecté - Sauvegarde absente';
+    ? `[MedData ${target}] Test d'alerte - Sauvegarde absente`
+    : `[MedData ${target}] Incident détecté - Sauvegarde absente`;
   const explanation = code === 'github-api-unavailable'
     ? "Pipedream n'a pas pu vérifier les sauvegardes dans GitHub."
     : code === 'backup-missing'
-      ? `Aucune sauvegarde staging réussie depuis plus de ${MAX_AGE_HOURS} heures.`
+      ? `Aucune sauvegarde ${target} réussie depuis plus de ${result.maxAgeHours} heures.`
       : "Ceci est un test attendu du détecteur externe d'absence de sauvegarde.";
 
   return {
     subject,
     text: [
-      'MedData staging',
+      `MedData ${target}`,
       '',
       'Contrôle : continuity-backup',
       `Code : ${code}`,
       explanation,
       '',
-      'Action : vérifier le workflow GitHub Continuity backup et la dernière sauvegarde staging.',
+      `Action : vérifier le workflow GitHub Continuity backup et la dernière sauvegarde ${target}.`,
       'Aucune donnée médicale ni aucun secret ne sont inclus dans cette alerte.',
     ].join('\n'),
   };
@@ -206,6 +219,8 @@ export function buildWatchdogEmail(result) {
 
 export const pipedreamComponent = {
   props: {
+    target: { type: 'string', label: 'Cible', options: ['staging', 'production'], default: 'staging' },
+    maxAgeHours: { type: 'integer', label: 'Age maximal en heures', default: 30 },
     github: {
       type: 'app',
       app: 'github',
@@ -220,16 +235,18 @@ export const pipedreamComponent = {
   },
   async run({ $ }) {
     const result = await checkBackupFreshness({
+      target: this.target ?? 'staging',
+      maxAgeHours: this.maxAgeHours ?? MAX_AGE_HOURS,
       token: this.github?.$auth?.oauth_access_token,
       forceTestAlert: this.forceTestAlert === true,
     });
 
     if (result.ok) {
-      $.export('$summary', 'Sauvegarde staging récente : contrôle externe vert.');
+      $.export('$summary', `Sauvegarde ${result.target} récente : contrôle externe vert.`);
       return result;
     }
 
-    $.send.email(buildWatchdogEmail(result));
+    await $.send.email(buildWatchdogEmail(result));
     $.export(
       '$summary',
       result.drill

@@ -12,6 +12,9 @@ import {
   runSupabaseDump,
   withIsolatedSupabaseWorkdir,
   writeAtomicBackupDirectory,
+  validateCoordinatedStorageSource,
+  validateDatabaseCoverage,
+  validateDatabaseFileInventory,
 } from '../scripts/coordinated-backup.mjs';
 
 const temporaryRoots: string[] = [];
@@ -21,6 +24,24 @@ afterEach(async () => {
 });
 
 describe('sauvegarde coordonnee sure', () => {
+  test('refuse une exportation sans Auth/Storage et les fichiers DB dupliques', () => {
+    const sql = ['auth.users', 'auth.identities', 'storage.buckets', 'storage.objects']
+      .map((table) => `COPY ${table} (id) FROM stdin;\n\\.\n`).join('');
+    expect(() => validateDatabaseCoverage(sql)).not.toThrow();
+    expect(() => validateDatabaseCoverage(sql.replace('COPY auth.identities', 'COPY public.identities'))).toThrow(/couverture/);
+    const files = ['roles', 'schema', 'data', 'public-data'].map((name) => ({ file: `${name}.sql.bin` }));
+    expect(() => validateDatabaseFileInventory(files)).not.toThrow();
+    expect(() => validateDatabaseFileInventory(files, 'meddata-coordinated-backup/v2')).toThrow();
+    expect(() => validateDatabaseFileInventory([...files, { file: 'auth-schema.sql.bin' }, { file: 'storage-schema.sql.bin' }], 'meddata-coordinated-backup/v2')).not.toThrow();
+    expect(() => validateDatabaseFileInventory([files[0], files[0], files[2], files[3]])).toThrow(/duplique/);
+  });
+
+  test('refuse une surcharge pouvant exporter le Storage d une autre source', () => {
+    expect(() => validateCoordinatedStorageSource({})).not.toThrow();
+    expect(() => validateCoordinatedStorageSource({ STORAGE_API_URL: 'http://other' })).toThrow();
+    expect(() => validateCoordinatedStorageSource({ STORAGE_SERVICE_ROLE_KEY: 'other-key' })).toThrow();
+  });
+
   test('epingle l image PG17 publiee avec la CLI candidate', () => {
     expect(COORDINATED_DUMP_IMAGE).toMatchObject({
       cliVersion: '2.109.1',
@@ -218,19 +239,19 @@ describe('sauvegarde coordonnee sure', () => {
     const workflow = await readFile('.github/workflows/continuity-backup.yml', 'utf8');
     const backupJob = workflow.slice(
       workflow.indexOf('  backup:'),
-      workflow.indexOf('  preserve-staging-copy:'),
+      workflow.indexOf('  preserve-copy:'),
     );
 
-    expect(workflow).toContain('preserve-staging-copy:');
+    expect(workflow).toContain('preserve-copy:');
     expect(workflow).toContain('needs: backup');
     expect(workflow).toContain('actions: read');
     expect(workflow).toContain('contents: write');
     expect(workflow).toContain(
-      "matrix.target == 'staging' && secrets.STORAGE_BACKUP_ENCRYPTION_KEY_20260723 || secrets.STORAGE_BACKUP_ENCRYPTION_KEY",
+      "secrets[vars.BACKUP_KEY_SECRET_NAME || (matrix.target == 'staging' && 'STORAGE_BACKUP_ENCRYPTION_KEY_20260723' || 'STORAGE_BACKUP_ENCRYPTION_KEY')]",
     );
     expect(backupJob).not.toContain('contents: write');
     expect(workflow).toContain('actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093');
-    expect(workflow).toContain('Preserve the staging backup as an immutable release');
+    expect(workflow).toContain('Preserve the backup as an immutable release');
     expect(workflow).not.toContain('repos/$GITHUB_REPOSITORY/immutable-releases');
     expect(workflow).toContain('repos/$GITHUB_REPOSITORY/releases/tags/$tag');
     expect(workflow).toContain('X-GitHub-Api-Version: 2026-03-10');
