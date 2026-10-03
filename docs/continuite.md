@@ -1,5 +1,15 @@
 # Continuité, sauvegarde et reprise
 
+> **Préparation locale du 2 octobre 2026 :** consulter le
+> [runbook production](continuite-production-runbook.md) et le
+> [rapport de préparation](audits/rapport-continuite-production-2026-10-02.md).
+> Le code proposé prépare cron, alertes et copie production sous activation explicite.
+> Le rapport du 2 octobre décrit l'état historique de la préparation. La reprise cloud
+> du 3 octobre est consignée dans le [rapport d'exercice local](audits/rapport-exercice-restauration-isolee-2026-10-03.md).
+> Aucun changement distant n'est effectué ; les observations locales ne valent pas
+> approbation du futur service production.
+> Les détails ci-dessous décrivent les mécanismes et preuves historiques staging.
+
 ## Sauvegarde périodique
 
 Le workflow `.github/workflows/continuity-backup.yml` crée deux fois par jour pour
@@ -10,9 +20,11 @@ pendant 30 jours. La marge de deux passages quotidiens maintient l'intervalle
 nominal sous le RPO approuvé de 24 heures, même si un passage échoue ou démarre
 avec retard.
 
-Le job `production` n'est jamais lancé par le cron. Il reste disponible uniquement
-par déclenchement manuel explicite avec `target=production` ou `target=all`, après
-autorisation production distincte.
+La configuration historique n'active pas le cron production. Le changement local
+proposé l'inclut seulement si la variable du dépôt
+`CONTINUITY_PRODUCTION_SCHEDULE_ENABLED=true`, en plus de la politique
+d'environnement décrite ci-dessous. Le déclenchement manuel reste possible avec
+`target=production` ou `target=all`, après autorisation production distincte.
 
 Le job refuse de démarrer tant que la variable d'environnement GitHub
 `CONTINUITY_BACKUP_ENABLED` ne vaut pas exactement `true`. Chaque environnement

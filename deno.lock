@@ -32,6 +32,7 @@
     "npm:fake-indexeddb@^6.2.5": "6.2.5",
     "npm:globals@^17.7.0": "17.7.0",
     "npm:jsdom@^25.0.1": "25.0.1",
+    "npm:libpg-query@17.7.4": "17.7.4",
     "npm:lucide-react@^1.23.0": "1.24.0_react@19.2.8",
     "npm:pg@^8.21.0": "8.22.0",
     "npm:react-dom@19.2.8": "19.2.8_react@19.2.8",
@@ -1098,6 +1099,9 @@
     },
     "@oxc-project/types@0.139.0": {
       "integrity": "sha512-r9gHphtCs+1M7J0pw6Sn/hh/Wpa/iQrOOkrNAlVLF/gHq+/CJmHIWKKUUhdWjcD6CIa8idarspCsASiXCXvFUw=="
+    },
+    "@pgsql/types@17.6.2": {
+      "integrity": "sha512-1UtbELdbqNdyOShhrVfSz3a1gDi0s9XXiQemx+6QqtsrXe62a6zOGU+vjb2GRfG5jeEokI1zBBcfD42enRv0Rw=="
     },
     "@playwright/test@1.61.1": {
       "integrity": "sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig==",
@@ -3037,6 +3041,12 @@
         "type-check"
       ]
     },
+    "libpg-query@17.7.4": {
+      "integrity": "sha512-hTV3LvacQgJhc6GHpu5GYZMQBOAEpJ/LF1JjkixZ8YLh2TtbuN8y0JlNiPTe8PBTV9ChFkKcZMWSYKyhJfkYaQ==",
+      "dependencies": [
+        "@pgsql/types"
+      ]
+    },
     "lightningcss-android-arm64@1.32.0": {
       "integrity": "sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==",
       "os": ["android"],
@@ -4395,6 +4405,7 @@
         "npm:fake-indexeddb@^6.2.5",
         "npm:globals@^17.7.0",
         "npm:jsdom@^25.0.1",
+        "npm:libpg-query@17.7.4",
         "npm:lucide-react@^1.23.0",
         "npm:pg@^8.21.0",
         "npm:react-dom@19.2.8",

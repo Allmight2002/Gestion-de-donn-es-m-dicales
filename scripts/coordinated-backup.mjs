@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import {
   access,
@@ -26,10 +26,13 @@ import {
   projectRefFromSupabaseUrl,
 } from './check-supabase-target.mjs';
 
-const FORMAT = 'meddata-coordinated-backup/v1';
+import { validateContinuityPolicy } from './continuity-policy.mjs';
+
+const FORMAT = 'meddata-coordinated-backup/v2';
+const LEGACY_FORMAT = 'meddata-coordinated-backup/v1';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const supabaseEntrypoint = join(root, 'node_modules', 'supabase', 'dist', 'supabase.js');
-const DUMP_STAGES = new Set(['roles', 'schema', 'data', 'public-data']);
+const DUMP_STAGES = new Set(['roles', 'schema', 'auth-schema', 'storage-schema', 'data', 'public-data']);
 // Source de verite: image PG du Dockerfile du tag Supabase CLI v2.109.1. Le
 // workdir de dump isole ci-dessous garantit que la CLI charge major_version=17
 // sans reutiliser un cache supabase/.temp issu d un autre environnement.
@@ -84,6 +87,7 @@ const DUMP_ENV_NAMES = new Set([
   'PATHEXT',
   'SYSTEMDRIVE',
   'SYSTEMROOT',
+  'SUPABASE_INTERNAL_IMAGE_REGISTRY',
   'TEMP',
   'TMP',
   'TMPDIR',
@@ -120,14 +124,33 @@ async function ensureAbsent(path) {
   }
 }
 
-function validatedSource() {
-  const target = option('target');
+export function validateCoordinatedSource(target, env = process.env) {
+  if (target === 'isolated-local') {
+    if (env.RECOVERY_ALLOW_LOCAL_BACKUP !== 'true' || env.RECOVERY_DATA_CLASSIFICATION !== 'fictitious-only') {
+      throw new Error('Sauvegarde locale refusee sans classification fictitious-only et activation explicite.');
+    }
+    for (const [value, database] of [[env.SUPABASE_URL, false], [env.SUPABASE_DB_URL, true]]) {
+      let url;
+      try { url = new URL(value); } catch { throw new Error('URL source locale invalide.'); }
+      if (!([database ? 'postgres:' : 'http:', database ? 'postgresql:' : 'https:'].includes(url.protocol))
+          || !['127.0.0.1', '[::1]'].includes(url.hostname) || !url.port || url.search || url.hash
+          || (!database && (url.username || url.password || url.pathname !== '/'))) {
+        throw new Error('La source locale exige des URLs loopback explicites sans surcharge.');
+      }
+    }
+    if (!/^meddata-recovery-[a-z0-9-]+$/.test(env.SUPABASE_PROJECT_REF ?? '')
+        || (env.SUPABASE_SERVICE_ROLE_KEY ?? '').length < 20
+        || env.BACKUP_REQUIRE_SESSION_POOLER === 'true') {
+      throw new Error('Configuration source fictive invalide.');
+    }
+    return { target, projectRef: env.SUPABASE_PROJECT_REF };
+  }
   if (!['staging', 'production'].includes(target)) {
     throw new Error('--target=staging ou --target=production est requis.');
   }
-  const projectRef = clean(process.env.SUPABASE_PROJECT_REF).toLowerCase();
-  const supabaseRef = projectRefFromSupabaseUrl(process.env.SUPABASE_URL);
-  const databaseRef = projectRefFromDatabaseUrl(process.env.SUPABASE_DB_URL);
+  const projectRef = clean(env.SUPABASE_PROJECT_REF).toLowerCase();
+  const supabaseRef = projectRefFromSupabaseUrl(env.SUPABASE_URL);
+  const databaseRef = projectRefFromDatabaseUrl(env.SUPABASE_DB_URL);
   if (!/^[a-z0-9]{20}$/.test(projectRef)
       || supabaseRef !== projectRef
       || databaseRef !== projectRef) {
@@ -139,14 +162,20 @@ function validatedSource() {
   if (target === 'production' && projectRef !== PRODUCTION_PROJECT_REF) {
     throw new Error('La cible ne correspond pas a la production MedData approuvee.');
   }
-  if (clean(process.env.SUPABASE_SERVICE_ROLE_KEY).length < 20) {
+  if (clean(env.SUPABASE_SERVICE_ROLE_KEY).length < 20) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY est absente ou manifestement invalide.');
   }
-  if (process.env.BACKUP_REQUIRE_SESSION_POOLER === 'true'
-      && !isSessionPoolerDatabaseUrl(process.env.SUPABASE_DB_URL)) {
+  if (env.BACKUP_REQUIRE_SESSION_POOLER === 'true'
+      && !isSessionPoolerDatabaseUrl(env.SUPABASE_DB_URL)) {
     throw new Error('La sauvegarde CI exige le Session pooler Supabase sur le port 5432.');
   }
   return { target, projectRef };
+}
+
+export function validateCoordinatedStorageSource(env = process.env) {
+  if (env.STORAGE_API_URL || env.STORAGE_SERVICE_ROLE_KEY) {
+    throw new Error('Les surcharges Storage sont interdites pour une sauvegarde coordonnee.');
+  }
 }
 
 export function isSessionPoolerDatabaseUrl(value) {
@@ -375,15 +404,31 @@ function manifestHmac(manifest, key) {
   return createHmac('sha256', key).update(JSON.stringify(manifest)).digest('hex');
 }
 
+async function sourceRevision() {
+  const paths = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+    cwd: root, encoding: 'utf8', windowsHide: true,
+  }).split('\0').filter((path) => /^(?:scripts\/|src\/|supabase\/|\.github\/workflows\/|package(?:-lock)?\.json$|deno\.json$|vite\.config\.)/.test(path)).sort();
+  const fingerprints = [];
+  for (const path of paths) fingerprints.push([path, sha256(await readFile(join(root, path)))]);
+  return {
+    runtimeSourceSha256: sha256(JSON.stringify(fingerprints)),
+    workingTreeDirty: Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim()),
+  };
+}
+
 async function backup() {
-  const { target, projectRef } = validatedSource();
+  const { target, projectRef } = validateCoordinatedSource(option('target'));
+  validateCoordinatedStorageSource();
   const destination = ensureOutsideRepository(option('output') || process.env.BACKUP_SET_DIR);
   const key = parseEncryptionKey(process.env.STORAGE_BACKUP_ENCRYPTION_KEY);
+  const { keyId } = validateContinuityPolicy({ ...process.env, BACKUP_TARGET: target });
   const databaseFileCount = await writeAtomicBackupDirectory(destination, async (partial) => {
     const startedAt = new Date().toISOString();
     const definitions = [
       ['roles.sql', ['--role-only'], 'roles'],
       ['schema.sql', [], 'schema'],
+      ['auth-schema.sql', ['--schema', 'auth'], 'auth-schema'],
+      ['storage-schema.sql', ['--schema', 'storage'], 'storage-schema'],
       ['data.sql', ['--data-only', '--use-copy'], 'data'],
       ['public-data.sql', ['--data-only', '--use-copy', '--schema', 'public'], 'public-data'],
     ];
@@ -395,6 +440,9 @@ async function backup() {
         runSupabaseDump(process.env.SUPABASE_DB_URL, plaintextPath, arguments_, stage, {
           workdir: dumpWorkdir,
         });
+        if (stage === 'data') {
+          validateDatabaseCoverage(await readFile(plaintextPath, 'utf8'));
+        }
         files.push(await encryptGeneratedFile(plaintextPath, key));
         console.log(`Export PostgreSQL ${files.length}/${definitions.length}: OK (contenu masque).`);
       }
@@ -426,11 +474,14 @@ async function backup() {
       projectRef,
       startedAt,
       completedAt: new Date().toISOString(),
+      keyId,
+      consistency: { mode: 'sequential-best-effort', atomicDatabaseStorageSnapshot: false },
       gitSha: execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: root,
         encoding: 'utf8',
         windowsHide: true,
       }).trim(),
+      sourceRevision: await sourceRevision(),
       supabaseCliVersion: JSON.parse(
         await readFile(join(root, 'node_modules', 'supabase', 'package.json'), 'utf8'),
       ).version,
@@ -451,15 +502,41 @@ async function backup() {
   console.log(`Sauvegarde coordonnee ${target}: OK (${databaseFileCount} exports DB + Storage chiffre).`);
 }
 
+// Empty tables still have COPY declarations in --use-copy dumps. Never print SQL.
+export function validateDatabaseCoverage(sql) {
+  for (const table of ['auth.users', 'auth.identities', 'storage.buckets', 'storage.objects']) {
+    const [schema, name] = table.split('.');
+    const expression = new RegExp(`^COPY (?:"${schema}"|${schema})\\.(?:"${name}"|${name})[ (]`, 'm');
+    if (!expression.test(sql)) throw new Error('Export DB incomplet: couverture Auth/Storage absente (contenu masque).');
+  }
+}
+
+export function validateDatabaseFileInventory(files, format = LEGACY_FORMAT) {
+  const expected = ['roles.sql.bin', 'schema.sql.bin', 'data.sql.bin', 'public-data.sql.bin'];
+  if (format === FORMAT) expected.push('auth-schema.sql.bin', 'storage-schema.sql.bin');
+  if (!Array.isArray(files) || files.length !== expected.length
+      || new Set(files.map((file) => file?.file)).size !== expected.length
+      || files.some((file) => !expected.includes(file?.file))) {
+    throw new Error('Inventaire des exports DB incomplet ou duplique.');
+  }
+}
+
 async function readAuthenticatedManifest(backupRoot, key) {
   const manifest = JSON.parse(await readFile(join(backupRoot, 'backup-set.json'), 'utf8'));
   const { hmacSha256, ...unsignedManifest } = manifest;
-  if (manifest.format !== FORMAT
+  if (![FORMAT, LEGACY_FORMAT].includes(manifest.format)
       || !/^[a-f0-9]{64}$/.test(hmacSha256 ?? '')
-      || manifestHmac(unsignedManifest, key) !== hmacSha256
-      || !Array.isArray(manifest.databaseFiles)
-      || manifest.databaseFiles.length !== 4) {
+      || !timingSafeEqual(Buffer.from(manifestHmac(unsignedManifest, key), 'hex'), Buffer.from(hmacSha256, 'hex'))
+      || !Array.isArray(manifest.databaseFiles)) {
     throw new Error('Manifest de sauvegarde coordonnee invalide ou non authentifie.');
+  }
+  validateDatabaseFileInventory(manifest.databaseFiles, manifest.format);
+  if (manifest.storage?.directory !== 'storage-objects') {
+    throw new Error('Repertoire Storage du manifest invalide.');
+  }
+  if (manifest.keyId !== undefined && (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(manifest.keyId)
+      || (process.env.BACKUP_KEY_ID && manifest.keyId !== process.env.BACKUP_KEY_ID))) {
+    throw new Error('Version de cle divergente du manifest authentifie.');
   }
   return manifest;
 }
@@ -482,6 +559,9 @@ async function verifiedDatabasePayloads(backupRoot, key, manifest) {
     }
     if (plaintext.length !== file.plaintextBytes || sha256(plaintext) !== file.plaintextSha256) {
       throw new Error('Empreinte d un export DB dechiffre invalide.');
+    }
+    if (manifest.format === FORMAT && file.file === 'data.sql.bin') {
+      validateDatabaseCoverage(plaintext.toString('utf8'));
     }
     payloads.push({ name: file.file.replace(/\.bin$/, ''), plaintext });
   }
@@ -555,8 +635,8 @@ async function main() {
 const isMain = process.argv[1]
   && resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
 if (isMain) {
-  main().catch((error) => {
-    console.error(`Sauvegarde coordonnee impossible: ${error instanceof Error ? error.message : 'erreur inconnue'}`);
+  main().catch(() => {
+    console.error('Sauvegarde coordonnee impossible (detail masque); verifier configuration, couverture et integrite.');
     process.exitCode = 1;
   });
 }
