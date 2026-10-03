@@ -4,6 +4,7 @@ import type { Client } from 'pg';
 import { startTestDb, type TestDb } from './harness/db';
 
 const migration = '20261002214653_export_source_revision_guard.sql';
+const independentWritersMigration = '20261003203222_export_revision_independent_writers.sql';
 let db: TestDb;
 let writer: Client;
 let owner: string;
@@ -27,6 +28,12 @@ beforeAll(async () => {
   const legacy = (await db.admin.query("select id, base_id from public.cohort where cohort_type='snapshot' limit 1")).rows[0];
   await db.admin.query(readFileSync(new URL(`../supabase/migrations/${migration}`, import.meta.url), 'utf8'));
   expect(await token(db.admin, legacy.id)).toBe(`v1:${legacy.base_id}:0:0:0:0`);
+  // Upgrade de compteurs existants : meme jeton, ancienne revision conservee sous writer_id=0.
+  await db.admin.query('insert into export_consistency.revision(resource,revision) values($1,7)', [`base:${legacy.base_id}`]);
+  const legacyToken = await token(db.admin, legacy.id);
+  await db.admin.query(readFileSync(new URL(`../supabase/migrations/${independentWritersMigration}`, import.meta.url), 'utf8'));
+  expect(await token(db.admin, legacy.id)).toBe(legacyToken);
+  expect((await db.admin.query('select writer_id from export_consistency.revision where resource=$1', [`base:${legacy.base_id}`])).rows[0].writer_id).toBe(0);
   owner = (await db.admin.query("select id from auth.users where email='alice@demo.test'")).rows[0].id;
   const template = (await db.admin.query("insert into public.template(name, owner_user_id) values('Export synthetique', $1) returning id", [owner])).rows[0].id;
   version = (await db.admin.query("insert into public.template_version(template_id, version_number, created_by) values($1,1,$2) returning id", [template, owner])).rows[0].id;
@@ -40,7 +47,7 @@ beforeAll(async () => {
     select $1, 'SYN-' || n, $2, '{"value":"avant"}'::jsonb, $3 from generate_series(1,501) n`, [base, version, owner]);
   expect(await token(db.admin, legacy.id)).toBe(beforeBulk);
   // Une seule incrementation pour 501 lignes (base INSERT + patient INSERT).
-  expect((await db.admin.query('select revision::text from export_consistency.revision where resource=$1', [`base:${base}`])).rows[0].revision).toBe('2');
+  expect((await db.admin.query('select sum(revision)::text as revision from export_consistency.revision where resource=$1', [`base:${base}`])).rows[0].revision).toBe('2');
   patient = (await db.admin.query('select id from public.patient where base_id=$1 order by id limit 1', [base])).rows[0].id;
   encounter = (await db.admin.query("insert into public.encounter(patient_id,template_version_id,encounter_type,encounter_date,created_by) values($1,$2,'consultation',current_date,$3) returning id", [patient, version, owner])).rows[0].id;
   cohort = (await db.admin.query("insert into public.cohort(base_id,name,cohort_type,snapshot_at,validated_only,created_by) values($1,'Export synthetique','snapshot',now(),false,$2) returning id", [base, owner])).rows[0].id;
@@ -84,6 +91,41 @@ test('aller-retour de valeur (ABA) : deux commits ne remettent jamais le jeton i
   await writer.query('update public.patient set data=$2 where id=$1', [patient, original]);
   expect(await token()).not.toBe(before);
 });
+
+// Regression du blocage observe en CI : pas de temporisation aleatoire, le timeout
+// PostgreSQL borne une attente de verrou a 1 s et les transactions sont toujours fermees.
+for (const source of ['patient', 'catalogue'] as const) {
+  test(`transactions independantes sans blocage : ${source}, commit et rollback separes`, async () => {
+    const second = db.pg.getPgClient();
+    await second.connect();
+    const before = await token();
+    const query = source === 'patient'
+      ? 'update public.patient set data=data where id=$1'
+      : "update public.template_field set label=label || ' concurrent' where id=$1";
+    const firstId = source === 'patient' ? patient : field;
+    const secondId = source === 'patient'
+      ? (await db.admin.query('select id from public.patient where base_id=$1 and id<>$2 order by id limit 1', [base, patient])).rows[0].id
+      : (await db.admin.query('select id from public.template_field where template_version_id=$1 limit 1', [unusedVersion])).rows[0].id;
+    try {
+      await writer.query('begin');
+      await second.query('begin');
+      await writer.query("set local lock_timeout='1s'");
+      await second.query("set local lock_timeout='1s'");
+      await writer.query(query, [firstId]);
+      await second.query(query, [secondId]);
+      expect(await token()).toBe(before);
+      await second.query('commit');
+      const afterSecondCommit = await token();
+      expect(afterSecondCommit).not.toBe(before);
+      await writer.query('rollback');
+      expect(await token()).toBe(afterSecondCommit);
+    } finally {
+      await writer.query('rollback');
+      await second.query('rollback');
+      await second.end();
+    }
+  });
+}
 
 test('une modification clinique sur une autre base ne refuse pas cet export', async () => {
   const before = await token();
@@ -139,7 +181,10 @@ test('TRUNCATE invalide meme sans changement de cardinalite', async () => {
 });
 
 test('bigint preserve au-dela de la precision JavaScript et lecture service_role', async () => {
-  await db.admin.query('update export_consistency.revision set revision=9007199254740993 where resource=$1', [`base:${base}`]);
+  await db.admin.query('update export_consistency.revision set revision=1 where resource=$1', [`base:${base}`]);
+  await db.admin.query(`update export_consistency.revision set revision=9007199254740993 -
+    (select coalesce(sum(r.revision),0) from export_consistency.revision r where r.resource=$1 and r.writer_id<>pg_backend_pid())
+    where resource=$1 and writer_id=pg_backend_pid()`, [`base:${base}`]);
   expect(await token()).toContain(':9007199254740993:');
   await writer.query('update public.patient set data=data where id=$1', [patient]);
   expect(await token()).toContain(':9007199254740994:');

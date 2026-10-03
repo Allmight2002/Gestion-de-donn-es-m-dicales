@@ -31,13 +31,19 @@ publiés, sans nouvelle lecture clinique. Il s'agit d'un refus explicite en cas 
 pas d'une copie historique persistante ni d'une promesse que le fichier contient les valeurs
 les plus récentes au moment du téléchargement.
 
-## Migration additive
+## Migrations additives
 
 `supabase/migrations/20261002214653_export_source_revision_guard.sql` ajoute :
 
 - le schéma interne `export_consistency` et la table de compteurs `revision` ;
 - une fonction trigger interne et des triggers par instruction avec tables de transition ;
 - la RPC `public.export_source_revision(uuid)`, `STABLE`, `SECURITY INVOKER`, réservée à `service_role`.
+
+La migration suivante `20261003203222_export_revision_independent_writers.sql` corrige
+la contention découverte par la CI : chaque compteur est réparti par backend PostgreSQL
+(`writer_id = pg_backend_pid()`). La RPC additionne les révisions dans un seul snapshot,
+sans changer le format du jeton. Les anciennes révisions sont conservées sous `writer_id=0`
+et le test d'upgrade vérifie que le jeton existant ne change pas lors de la migration.
 
 Aucune migration antérieure n'est modifiée, aucun backfill clinique n'est nécessaire.
 Une ressource sans compteur vaut zéro et sa première modification est détectée.
@@ -54,14 +60,20 @@ ne dispose pas d'INSERT/UPDATE/DELETE. Le trigger utilise des droits internes, u
 
 Les insertions/suppressions sont couvertes, ainsi que les cascades et les anciens/nouveaux
 rattachements d'une instruction. Un import de 501 patients dans une base n'incrémente son
-compteur qu'une fois. Les écritures d'une même base peuvent attendre brièvement la ligne
-commune de compteur jusqu'à la fin d'une transaction d'écriture ; aucun verrou n'est
-conservé par l'export. Les modifications du catalogue ou des profils refusent par prudence
+compteur qu'une fois. Les transactions de backends distincts n'écrivent pas la même
+ligne de compteur : les mises à jour de lignes indépendantes ne sont plus sérialisées
+par le suivi des exports. Un backend PostgreSQL traite ses transactions séquentiellement ;
+si son PID est réutilisé plus tard, le compteur existant continue sans remise à zéro.
+Aucun verrou n'est conservé par l'export. Les modifications du catalogue ou des profils refusent par prudence
 les exports en cours d'autres bases. Une modification clinique d'une autre base ne les refuse pas.
 
 La garantie suppose les triggers actifs et les lectures sur la base primaire. Une opération
 d'administration qui désactive les triggers ou restaure des données doit suspendre les
-exports. Le jeton identifie une fenêtre locale de cohérence, pas une preuve de restauration
+exports. Les compteurs de backends terminés doivent être conservés, y compris ceux
+restaurés depuis une autre instance : leur somme fait partie du jeton. La table grandit
+avec les couples ressource/PID utilisés ; aucune suppression automatique n'est ajoutée.
+Un éventuel compactage doit se faire hors des fenêtres d'export, avec conservation des
+totaux et sans écriture concurrente. Le jeton identifie une fenêtre locale de cohérence, pas une preuve de restauration
 ou un identifiant global entre deux instances/restaurations.
 
 ## Impact sur la restauration et vérification commune obligatoire
@@ -70,7 +82,7 @@ Les scripts de sauvegarde/restauration et leurs workflows restent inchangés dan
 La migration n'a été appliquée que sur des PostgreSQL embarqués jetables.
 
 Le nouveau schéma **`export_consistency` doit exister dans la cible restaurée**, avec la
-table, le trigger interne, ses ACL, les triggers des tables métier et la RPC publique.
+table avec sa colonne `writer_id` et sa clé primaire `(resource, writer_id)`, le trigger interne, ses ACL, les triggers des tables métier et la RPC publique.
 Une sauvegarde limitée à `public` ne contient pas ce schéma interne. Dans la version de
 référence, `coordinated-backup.mjs` produit des dumps de schéma/données sans filtre et un
 fichier supplémentaire `public-data.sql` limité à `public` : leur couverture effective du
@@ -81,7 +93,7 @@ Les valeurs historiques des compteurs ne sont pas nécessaires à une nouvelle f
 d'export, tant que la restauration est hors ligne et que toutes les dépendances/triggers
 sont correctement recréés. Restaurer uniquement `public-data.sql` sans reconstruire le
 schéma interne serait insuffisant. Restaurer un ancien schéma impose de prévoir cette
-nouvelle migration sur la cible isolée, avant de rendre les exports disponibles.
+deux nouvelles migrations sur la cible isolée, avant de rendre les exports disponibles.
 
 **Aucune intégration avant une vérification commune des deux branches**, sur une nouvelle
 base isolée et avec des données synthétiques :
@@ -96,7 +108,30 @@ base isolée et avec des données synthétiques :
 
 Cette vérification commune reste **à effectuer** ; cette branche n'est ni fusionnée ni déployée.
 
-## Validation locale
+## Correction du premier échec CI
+
+Le premier run CI de la PR #403 a réussi les migrations depuis zéro, TypeScript,
+le lint et tous les tests Edge. Trois tests de `repeatable-groups.test.ts` ont ensuite
+expiré : le compteur unique par base faisait attendre deux transactions modifiant
+des rencontres distinctes. Les tests suivants héritaient des transactions bloquées.
+La deuxième migration corrige ce défaut sans augmenter les timeouts ni affaiblir les tests.
+
+Les deux fichiers `export-source-revision.test.ts` et `repeatable-groups.test.ts` passent
+ensemble : **43 tests**, dont **25 tests de révisions**. Deux nouveaux tests gardent
+simultanément des transactions ouvertes sur des lignes patient ou catalogue distinctes,
+avec `lock_timeout=1s`, puis vérifient un commit et un rollback indépendants. Le jeton
+ne change qu'après le commit et reste identique après l'annulation de l'autre transaction.
+
+## Validation locale de la correction CI
+
+- Suite complète Node/UI/DB : **2 651 tests passés, 3 ignorés**, 239 fichiers réussis et un ignoré.
+- Les 190 migrations s'appliquent depuis zéro sur PostgreSQL embarqué ; snapshot régénéré et contrôlé.
+- TypeScript, lint global et build PWA avec la configuration fictive de CI : réussis.
+- Node 22.22.0, dépendances verrouillées dans un répertoire temporaire ; seul le téléchargement
+  SheetJS bloqué est remplacé temporairement par le module 0.20.3 vendorié, sans modification
+  des manifestes/lockfiles du dépôt. La CI normale doit confirmer le résultat sur `develop`.
+
+## Validation locale initiale
 
 - Tests DB ciblés : 82 tests passés dans 7 fichiers, dont 23 nouveaux tests de révisions.
   Ils utilisent des PostgreSQL embarqués neufs, des répertoires temporaires, des ports
