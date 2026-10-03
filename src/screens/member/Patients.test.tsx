@@ -576,6 +576,10 @@ describe('BaseHome (liste patients)', () => {
     expect(await screen.findByText('P-0021')).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-0099');
+    // La frappe seule ne lance rien : la recherche part sur Entree.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(listPatientsPage.mock.calls.some((call) => call[3]?.codeQuery)).toBe(false);
+    await userEvent.keyboard('{Enter}');
     expect(await screen.findByText('P-0099')).toBeInTheDocument();
     const derniere = listPatientsPage.mock.calls.at(-1)!;
     expect(derniere[2]).toBe(0);                          // toute recherche revient a la premiere page
@@ -630,7 +634,7 @@ describe('BaseHome (liste patients)', () => {
     expect(await screen.findByText('P-0001')).toBeInTheDocument();
     await userEvent.click(within(screen.getByRole('navigation', { name: 'Pagination, bas de liste' })).getByRole('button', { name: 'Suivant' }));
     expect(await screen.findByText('P-0021')).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-00');
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-00{Enter}');
 
     await userEvent.click(screen.getByRole('button', { name: 'Ouvrir base B' }));
     await waitFor(() => expect(listPatientsPage.mock.calls.at(-1)?.[0]).toBe('b2'));
@@ -814,18 +818,22 @@ describe('BaseHome — recherche nominative (UX-12(c))', () => {
       : { rows: Array.from({ length: Math.min(limit, 40 - offset) }, (_, i) => listRow(offset + i + 1)), total: 40 }
   ));
 
-  test('P05 — le nom trouve le patient, et seul son code revient à l\'écran', async () => {
+  test('P05 — un seul champ cherche code ET nom, et seul le code revient à l\'écran', async () => {
     const listPatientsPage = pageRepo();
     // Le serveur rend les identifiants dans SON ordre ; l'écran ne le réinvente pas.
-    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: ['p33', 'p7'], total: 2 }));
-    renderList({ listPatientsPage, searchPatientIdsByIdentity } as unknown as PatientRepository);
+    const searchPatientIds = vi.fn(async () => ({ ids: ['p33', 'p7'], total: 2 }));
+    renderList({ listPatientsPage, searchPatientIds } as unknown as PatientRepository);
 
     expect(await screen.findByText('P-0001')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('radio', { name: 'Par identité' }));
+    // Aucun choix préalable « code » ou « identité » n'est demandé.
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(searchPatientIds).not.toHaveBeenCalled();
+    await userEvent.keyboard('{Enter}');
 
-    await waitFor(() => expect(searchPatientIdsByIdentity).toHaveBeenCalled());
-    expect(searchPatientIdsByIdentity.mock.calls.at(-1)).toEqual(['b1', 'Fictif', 20, 0]);
+    await waitFor(() => expect(searchPatientIds).toHaveBeenCalled());
+    expect(searchPatientIds.mock.calls.at(-1)).toEqual(['b1', 'Fictif', 20, 0]);
     expect(await screen.findByText('P-0033')).toBeInTheDocument();
     // L'ordre du serveur est conservé : P-0033 avant P-0007.
     const codes = screen.getAllByText(/^P-00(33|07)$/).map((node) => node.textContent);
@@ -833,60 +841,48 @@ describe('BaseHome — recherche nominative (UX-12(c))', () => {
     // La page analytique est relue par le chemin habituel, restreinte à ces identifiants.
     expect(listPatientsPage.mock.calls.at(-1)?.[3]?.ids).toEqual(['p33', 'p7']);
     // Aucun nom n'est affiché : la liste reste pseudonymisée.
-    expect(screen.queryByText(/Fictif/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Fictif$/)).not.toBeInTheDocument();
   });
 
-  test('moins de deux caractères ne déclenche aucune recherche nominative', async () => {
-    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: [], total: 0 }));
-    renderList({ listPatientsPage: pageRepo(), searchPatientIdsByIdentity } as unknown as PatientRepository);
-
-    expect(await screen.findByText('P-0001')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('radio', { name: 'Par identité' }));
-    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'A');
-
-    expect(await screen.findByText(/au moins deux caractères/)).toBeInTheDocument();
-  });
-
-  test('P06 — sans droit d\'identité sur cette base, le mode nominatif n\'est pas proposé', async () => {
+  test('P06 — sans droit d\'identité sur cette base, la recherche reste celle du code', async () => {
     const sansIdentite: BaseListing = { ...baseListing, role: 'editor', permissions: { ...ALL_PERMS, canViewIdentity: false } };
-    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: [], total: 0 }));
+    const searchPatientIds = vi.fn(async () => ({ ids: [], total: 0 }));
+    const listPatientsPage = pageRepo();
     renderList(
-      { listPatientsPage: pageRepo(), searchPatientIdsByIdentity } as unknown as PatientRepository,
+      { listPatientsPage, searchPatientIds } as unknown as PatientRepository,
       { async getBase() { return sansIdentite; } } as unknown as BaseRepository,
     );
 
     expect(await screen.findByText('P-0001')).toBeInTheDocument();
-    expect(screen.queryByRole('group', { name: 'Rechercher par' })).not.toBeInTheDocument();
     expect(screen.getByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
-    // Et la recherche qui reste disponible ne passe jamais par l'opération d'identité.
-    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-0099');
-    await waitFor(() => expect(screen.queryByText('P-0021')).not.toBeInTheDocument());
-    expect(searchPatientIdsByIdentity).not.toHaveBeenCalled();
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'P-0099{Enter}');
+    await waitFor(() => expect(listPatientsPage.mock.calls.at(-1)?.[3]?.codeQuery).toBe('P-0099'));
+    expect(searchPatientIds).not.toHaveBeenCalled();
   });
 
   test('P07 — un droit retiré ramène la recherche au code, sans requête nominative de plus', async () => {
     let permis = true;
-    const searchPatientIdsByIdentity = vi.fn(async () => ({ ids: ['p7'], total: 1 }));
+    const searchPatientIds = vi.fn(async () => ({ ids: ['p7'], total: 1 }));
     const listPatientsPage = pageRepo();
     const bases = {
       async getBase() {
         return permis ? baseListing : { ...baseListing, permissions: { ...ALL_PERMS, canViewIdentity: false } };
       },
     } as unknown as BaseRepository;
-    renderList({ listPatientsPage, searchPatientIdsByIdentity } as unknown as PatientRepository, bases);
+    renderList({ listPatientsPage, searchPatientIds } as unknown as PatientRepository, bases);
 
     expect(await screen.findByText('P-0001')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('radio', { name: 'Par identité' }));
-    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif');
-    await waitFor(() => expect(searchPatientIdsByIdentity).toHaveBeenCalledTimes(1));
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif{Enter}');
+    await waitFor(() => expect(searchPatientIds).toHaveBeenCalledTimes(1));
 
     // Le droit est retiré côté serveur ; le prochain chargement l'apprend.
     permis = false;
     await userEvent.click(screen.getByRole('button', { name: 'Effacer la recherche' }));
+    expect(await screen.findByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.queryByRole('group', { name: 'Rechercher par' })).not.toBeInTheDocument());
-    expect(screen.getByText(/La recherche par identité est indisponible/)).toBeInTheDocument();
-    expect(searchPatientIdsByIdentity).toHaveBeenCalledTimes(1);
+    await userEvent.type(screen.getByLabelText('Rechercher un patient'), 'Fictif{Enter}');
+    await waitFor(() => expect(listPatientsPage.mock.calls.at(-1)?.[3]?.codeQuery).toBe('Fictif'));
+    expect(searchPatientIds).toHaveBeenCalledTimes(1);
   });
 });
 

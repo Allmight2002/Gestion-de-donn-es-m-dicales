@@ -32,7 +32,6 @@ import {
 } from '../../data/offlineIntake';
 
 const PAGE_SIZE = 20;
-const SEARCH_DEBOUNCE_MS = 300;
 
 // UX-12(b) : tri de CONSULTATION. Le champ de tri voyage tel quel jusqu'au serveur ; la liste
 // n'expose que des colonnes analytiques, conformement a RG-9.
@@ -110,9 +109,6 @@ export function BaseHome() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  // UX-12(c) : chercher par code ou par nom. Le mode n'est qu'un choix d'écran ; c'est le
-  // serveur qui décide si une recherche nominative est permise, et il ne rend jamais de nom.
-  const [searchMode, setSearchMode] = useState<'code' | 'name'>('code');
   const [sort, setSort] = useState<SortChoice>(DEFAULT_SORT);
   // Copie hors-ligne (controles disponibles en ligne).
   const [cachedMeta, setCachedMeta] = useState<OfflineMeta | null>(null);
@@ -133,18 +129,21 @@ export function BaseHome() {
   const [context, setContext] = useState(id);
   if (context !== id) {
     setContext(id);
-    setPage(0); setSearch(''); setAppliedSearch(''); setSort(DEFAULT_SORT); setSearchMode('code');
+    setPage(0); setSearch(''); setAppliedSearch(''); setSort(DEFAULT_SORT);
     setRows([]); setTotal(0); setBaseName(''); setListing(null); setError(null); setLoadFailed(false);
   }
 
-  // La recherche part apres une courte pause de frappe et ramene toujours a la premiere page :
-  // un filtre modifie sur la page 3 n'a aucune raison de repartir de la page 3.
-  useEffect(() => {
-    const next = search.trim();
+  // La recherche part sur Entree (jamais pendant la frappe) et ramene toujours a la premiere
+  // page : un filtre modifie sur la page 3 n'a aucune raison de repartir de la page 3.
+  const applySearch = (value: string) => {
+    const next = value.trim();
     if (next === appliedSearch) return;
-    const handle = setTimeout(() => { setAppliedSearch(next); setPage(0); }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(handle);
-  }, [search, appliedSearch]);
+    setAppliedSearch(next);
+    setPage(0);
+  };
+  // Droit de recherche nominative appris au dernier chargement de CETTE base. Il decide
+  // seulement quelle operation l'ecran appelle : le serveur reverifie role et permission.
+  const identityAllowed = useRef<{ baseId: string; allowed: boolean } | null>(null);
 
   const columnsKey = columnsStorageKey(profile?.id, id);
   // Repli de session quand le navigateur refuse d'ecrire (mode prive, quota). En ligne, ce
@@ -223,14 +222,16 @@ export function BaseHome() {
       // EN LIGNE : base + page de patients EN PARALLELE (independants), puis champs du gabarit.
       setOfflineView(false);
       setIntakeOfflineView(false);
-      // UX-12(c) : une recherche par NOM se résout en deux temps. L'opération auditée rend des
-      // identifiants — jamais un nom —, et la page analytique est ensuite relue par le chemin
-      // habituel, sous la RLS. Sans terme, ou hors mode nominatif, rien ne change.
-      const nameSearch = searchMode === 'name' && appliedSearch !== '' && !!patients.searchPatientIdsByIdentity;
+      // Recherche globale (code OU nom) pour qui peut chercher par nom sur cette base. Elle se
+      // résout en deux temps : l'opération auditée rend des identifiants — jamais un nom —, et
+      // la page analytique est ensuite relue par le chemin habituel, sous la RLS. Sans droit
+      // nominatif, la recherche reste celle du code, avec le tri choisi.
+      const globalSearch = appliedSearch !== '' && !!patients.searchPatientIds
+        && identityAllowed.current?.baseId === id && identityAllowed.current.allowed;
       const [baseResult, pageResult] = await Promise.allSettled([
         bases.getBase(id),
-        nameSearch
-          ? patients.searchPatientIdsByIdentity!(id, appliedSearch, PAGE_SIZE, page * PAGE_SIZE)
+        globalSearch
+          ? patients.searchPatientIds!(id, appliedSearch, PAGE_SIZE, page * PAGE_SIZE)
             .then(async (found) => (found.ids.length === 0
               ? { rows: [], total: found.total }
               : patients.listPatientsPage(id, found.ids.length, 0, { ids: found.ids })
@@ -250,6 +251,10 @@ export function BaseHome() {
       if (baseResult.status === 'rejected') throw baseResult.reason;
       const b = baseResult.value;
       setListing(b);
+      identityAllowed.current = {
+        baseId: id,
+        allowed: profile?.globalRole === 'medecin' && !!b?.permissions.canViewIdentity,
+      };
       if (b) {
         setBaseName(b.base.name);
         recordRecentBase(id, b.base.name); // UI-1 : navigation laterale « bases recentes »
@@ -318,7 +323,7 @@ export function BaseHome() {
       if (!isCancelled()) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, page, online, bases, templates, patients, viewPreferences, queueColumnSave, appliedSearch, searchMode, sort.field, sort.direction, columnsKey]);
+  }, [id, page, online, bases, templates, patients, viewPreferences, queueColumnSave, appliedSearch, sort.field, sort.direction, columnsKey, profile?.globalRole]);
 
   useEffect(() => {
     let cancelled = false;
@@ -464,11 +469,7 @@ export function BaseHome() {
   const identitySearchAvailable = !offlineView
     && profile?.globalRole === 'medecin'
     && !!listing?.permissions.canViewIdentity
-    && !!patients.searchPatientIdsByIdentity;
-  // Droit révoqué, base changée ou passage hors connexion : le mode revient au code PENDANT
-  // le rendu, avant qu'une requête ne parte encore en nominatif. Le serveur refuserait de
-  // toute façon, mais l'écran ne doit pas continuer à proposer ce qu'il n'a plus.
-  if (searchMode === 'name' && !identitySearchAvailable && !loading) setSearchMode('code');
+    && !!patients.searchPatientIds;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const applyColumns = (next: string[]) => {
     setVisibleFieldKeys(next);
@@ -614,16 +615,22 @@ export function BaseHome() {
             {/* UX-12(b) : recherche et tri sont resolus par le SERVEUR avant la pagination ;
                 la liste reste presentee par code et variables analytiques (RG-9). */}
             {!offlineView && (
-              <div className="relative min-w-0 flex-1">
+              <form role="search" className="relative min-w-0 flex-1"
+                onSubmit={(event) => { event.preventDefault(); applySearch(search); }}>
                 <label className="sr-only" htmlFor="patient-search">{t('patient.search')}</label>
                 <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input id="patient-search" type="search" className="input pl-9" value={search} autoComplete="off"
-                  placeholder={t(searchMode === 'name' ? 'patient.search_name_placeholder' : 'patient.search_placeholder')}
-                  onChange={(event) => setSearch(event.target.value)} />
-              </div>
+                  enterKeyHint="search"
+                  placeholder={t(identitySearchAvailable ? 'patient.search_global_placeholder' : 'patient.search_placeholder')}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    // Vider le champ (croix native, effacement) rend la liste complete sans Entree.
+                    if (event.target.value === '') applySearch('');
+                  }} />
+              </form>
             )}
             {!offlineView && search !== '' && (
-              <button type="button" className="btn-ghost min-h-11 shrink-0 px-2" onClick={() => setSearch('')}>
+              <button type="button" className="btn-ghost min-h-11 shrink-0 px-2" onClick={() => { setSearch(''); applySearch(''); }}>
                 {t('patient.search_clear')}
               </button>
             )}
@@ -634,13 +641,13 @@ export function BaseHome() {
                 triggerContent={<ArrowDownUp size={16} aria-hidden />}
                 panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] space-y-3 p-4 shadow-lg"
               >
-                {/* En recherche nominative, l'ordre est celui du code, decide par le serveur :
+                {/* En recherche globale, l'ordre est celui du code, decide par le serveur :
                     laisser le tri actif afficherait un controle sans effet. getByLabel de
                     Playwright inclut le texte des options du label enveloppant : un libelle
                     explicite evite de confondre ce tri avec le champ Code patient. */}
                 <label className="form-label" htmlFor="patient-sort">{t('patient.sort')}
                   <select id="patient-sort" className="input" aria-label={t('patient.sort')}
-                    value={sort.field} disabled={searchMode === 'name' && searching}
+                    value={sort.field} disabled={identitySearchAvailable && searching}
                     onChange={(event) => changeSort({ ...sort, field: event.target.value as PatientSortField })}>
                     <option value="created_at">{t('patient.sort_created')}</option>
                     <option value="patient_code">{t('patient.sort_code')}</option>
@@ -687,35 +694,18 @@ export function BaseHome() {
               </div>
             )}
           </div>
-          {/* UX-12(c) : le mode nominatif n'est proposé qu'à un médecin disposant du droit
-              d'identité sur CETTE base, et seulement si le serveur sait le traiter. Ce contrôle
-              est un confort d'écran : l'autorisation est revérifiée par l'opération serveur,
-              qui ne rend que des identifiants. Lot 2 (décision 5) : deux pastilles à la place
-              du sélecteur ; même opération, mêmes droits, même journal. */}
-          {identitySearchAvailable && (
-            <fieldset className="inline-flex rounded-xl border border-slate-200 p-0.5 dark:border-slate-700">
-              <legend className="sr-only">{t('patient.search_by')}</legend>
-              {(['code', 'name'] as const).map((mode) => (
-                <label key={mode}
-                  className="flex min-h-11 cursor-pointer items-center rounded-lg px-3 text-sm text-slate-600 has-[:checked]:bg-teal-50 has-[:checked]:font-medium has-[:checked]:text-teal-800 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-teal-700 dark:text-slate-300 dark:has-[:checked]:bg-teal-900/40 dark:has-[:checked]:text-teal-200">
-                  <input type="radio" name="patient-search-mode" value={mode} className="sr-only"
-                    checked={searchMode === mode} onChange={() => { setSearchMode(mode); setPage(0); }} />
-                  {t(mode === 'code' ? 'patient.search_mode_code' : 'patient.search_mode_identity')}
-                </label>
-              ))}
-            </fieldset>
-          )}
-          {!offlineView && (searchMode === 'name' ? (
-            <p className="helper-text">{t('patient.search_mode_name_note')}</p>
-          ) : !identitySearchAvailable && (
-            <p className="helper-text">{t('patient.search_identity_unavailable')}</p>
-          ))}
-          {!offlineView && searchMode === 'name' && search.trim() !== '' && search.trim().length < 2 && (
-            <p role="status" className="helper-text text-amber-800">{t('patient.search_name_too_short')}</p>
+          {/* Recherche globale : un seul champ, code ou nom, sans choix préalable. La partie
+              nominative n'existe que pour un médecin disposant du droit d'identité sur CETTE base ;
+              l'autorisation est revérifiée par l'opération serveur, qui ne rend que des
+              identifiants. */}
+          {!offlineView && (
+            <p className="helper-text">
+              {t(identitySearchAvailable ? 'patient.search_global_note' : 'patient.search_identity_unavailable')}
+            </p>
           )}
           <p className="text-xs text-slate-500">
             {t('patient.list_count').replace('{n}', String(total))}
-            {!offlineView && !(searchMode === 'name' && searching) && ` · ${t('patient.sort_summary')
+            {!offlineView && !(identitySearchAvailable && searching) && ` · ${t('patient.sort_summary')
               .replace('{field}', t(sort.field === 'patient_code' ? 'patient.sort_code' : 'patient.sort_created'))
               .replace('{direction}', t(sort.direction === 'asc' ? 'patient.sort_asc' : 'patient.sort_desc').toLocaleLowerCase())}`}
           </p>

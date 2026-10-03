@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261001200000_todo_pending_codings.sql`
-- Tables : 60 · Policies RLS : 72 · Triggers : 99 · Fonctions : 421
+- Dernière migration incluse : `20261003100000_ux_patient_global_search.sql`
+- Tables : 60 · Policies RLS : 72 · Triggers : 99 · Fonctions : 422
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1659,6 +1659,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | save_form_preparation | p_preparation_id uuid, p_base_id uuid, p_expected_preparation_revision bigint, p_expected_source_revision bigint, p_expected_source_fingerprint text, p_operation_id uuid, p_payload jsonb | DEFINER | plpgsql |
 | save_work_draft | p_id uuid, p_base_id uuid, p_kind text, p_target_id uuid, p_template_version_id uuid, p_entity_revision text, p_expected_revision bigint, p_operation_id uuid, p_payload jsonb | DEFINER | plpgsql |
 | scrub_client_error_text | p_value text, p_max_length integer | INVOKER | plpgsql |
+| search_patient_ids | p_base_id uuid, p_term text, p_limit integer, p_offset integer | DEFINER | plpgsql |
 | search_patient_ids_by_identity | p_base_id uuid, p_term text, p_limit integer, p_offset integer | DEFINER | plpgsql |
 | search_terminology | p_query text, p_limit integer | INVOKER | sql |
 | set_base_inclusion_target | p_base_id uuid, p_target integer, p_target_date date, p_expected_revision bigint | DEFINER | plpgsql |

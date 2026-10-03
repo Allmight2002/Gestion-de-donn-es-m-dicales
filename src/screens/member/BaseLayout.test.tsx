@@ -46,6 +46,7 @@ function renderLayout(listing: BaseListing) {
               <Route path="queue" element={<div>FILE</div>} />
               <Route path="codings" element={<div>A CODER</div>} />
               <Route path="propositions" element={<div>PROPOSITIONS</div>} />
+              <Route path="export" element={<div>EXPORT</div>} />
               <Route path="cohorts" element={<div>COHORTES</div>} />
               <Route path="stats" element={<div>STATS</div>} />
               <Route path="activity" element={<div>JOURNAL</div>} />
@@ -109,6 +110,19 @@ describe('BaseLayout — quatre destinations', () => {
     const subs = await screen.findByRole('navigation', { name: 'Paramètres' });
     expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent)).toEqual(['Général', 'Journal']);
     expect(screen.queryByRole('link', { name: 'Formulaire' })).not.toBeInTheDocument();
+  });
+
+  // L'export est la premiere entree d'« Analyse » : il doit s'ouvrir DANS la page a onglets,
+  // sans quoi la barre d'onglets disparait et les cohortes/statistiques deviennent introuvables.
+  test('l onglet Analyse ouvre l export sans quitter les onglets', async () => {
+    renderLayout(listingWith('owner'));
+    await userEvent.click(await screen.findByRole('link', { name: /Analyse/ }));
+    expect(await screen.findByText('EXPORT')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Gliomes 2026' })).toBeInTheDocument();
+    const subs = screen.getByRole('navigation', { name: 'Analyse' });
+    expect(Array.from(subs.querySelectorAll('a'), (link) => link.textContent))
+      .toEqual(['Exporter', 'Cohortes', 'Statistiques']);
+    expect(screen.getByRole('link', { name: 'Exporter' })).toHaveAttribute('aria-current', 'page');
   });
 
   test('un seul sous-onglet disponible : pas de barre secondaire', async () => {
