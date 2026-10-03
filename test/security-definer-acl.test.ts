@@ -72,9 +72,12 @@ describe('inventaire SECURITY DEFINER', () => {
     // (table sans policy d'ecriture) sous le marqueur de rattachement, comme la recopie ; il
     // verifie donc lui-meme le role medecin/administrateur et ne cree qu'un gabarit personnel.
     // +1 rename_base : renommage d une base, proprietaire seul, avec controle du nom lu.
-    expect(signatures).toHaveLength(153);
+    // +1 recherche globale : search_patient_ids. Code OU nom en un seul champ ; la partie
+    // nominative traverse patient_identity (sans policy) apres role + permission, et ne rend
+    // que des identifiants.
+    expect(signatures).toHaveLength(154);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(165);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(166);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

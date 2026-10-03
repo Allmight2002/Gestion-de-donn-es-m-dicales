@@ -178,3 +178,51 @@ describe('UX-12(c) — recherche nominative', () => {
     expect(normalisation.rows[0].ok).toBe(false);
   });
 });
+
+// Recherche globale : un seul champ, le code OU le nom, sans choix prealable. La partie
+// nominative garde les verrous ci-dessus ; la partie code suit la visibilite de `patient`.
+describe('Recherche globale — code ou nom', () => {
+  const globale = (uid: string, term: string, base = BASE, limit = 20, offset = 0) =>
+    as(uid, 'select * from public.search_patient_ids($1,$2,$3,$4)', [base, term, limit, offset]) as
+      Promise<Array<{ patient_id: string; total: string }>>;
+
+  test('un medecin autorise trouve par le code comme par le nom, sans recevoir de nom', async () => {
+    expect(await codesOf(await globale(ALICE, 'NCH-90'))).toEqual(['NCH-900', 'NCH-901']);
+    expect(await codesOf(await globale(ALICE, 'andree'))).toEqual(['NCH-900']);
+    const rows = await globale(ALICE, 'Patient Fictif');
+    expect(Number(rows[0].total)).toBe(10);
+    expect(Object.keys(rows[0]).sort()).toEqual(['patient_id', 'total']);
+  });
+
+  test('sans droit d\'identite, seul le code est cherche, sans trace d\'acces nominatif', async () => {
+    const avant = await auditCount();
+    expect(await globale(ANNA, 'andree')).toEqual([]);
+    expect(await codesOf(await globale(ANNA, 'NCH-900'))).toEqual(['NCH-900']);
+    expect(await auditCount()).toBe(avant);
+  });
+
+  test('sans acces a la base, rien ne remonte, meme par le code', async () => {
+    expect(await globale(BOB, 'NCH-900')).toEqual([]);
+    expect(await globale(CURATEUR, 'NCH-900')).toEqual([]);
+    expect(await codesOf(await globale(BOB, 'VOI', AUTRE_BASE))).toEqual(['VOI-001']);
+  });
+
+  test('un caractere cherche le code seulement ; le terme reste du texte', async () => {
+    const avant = await auditCount();
+    expect((await globale(ALICE, '9')).length).toBeGreaterThan(0);
+    expect(await auditCount()).toBe(avant);
+    expect(await globale(ALICE, '%%')).toEqual([]);
+    expect(await globale(ALICE, '  ')).toEqual([]);
+  });
+
+  test('la partie nominative est journalisee sans le terme, et la fonction est fermee aux anonymes', async () => {
+    const avant = await auditCount();
+    await globale(ALICE, 'Élodie');
+    expect(await auditCount()).toBe(avant + 1);
+    const accorde = await db.admin.query(
+      "select has_function_privilege('anon', $1, 'execute') as ok",
+      ['public.search_patient_ids(uuid,text,int,int)'],
+    );
+    expect(accorde.rows[0].ok).toBe(false);
+  });
+});
