@@ -261,7 +261,7 @@ describe('configuration de deploiement', () => {
   test('la sauvegarde de continuite est periodique, chiffree, verifiee et conservee hors runner', () => {
     const workflow = read('.github/workflows/continuity-backup.yml');
     expect(workflow).toContain("cron: '17 2,14 * * *'");
-    expect(workflow).toContain("github.event_name == 'schedule' && '[\"staging\"]'");
+    expect(workflow).toContain("vars.CONTINUITY_PRODUCTION_SCHEDULE_ENABLED == 'true' && '[\"staging\",\"production\"]' || '[\"staging\"]'");
     expect(workflow).toContain('["staging","production"]');
     expect(workflow).toContain('environment: ${{ matrix.target }}');
     expect(workflow).toContain('CONTINUITY_BACKUP_ENABLED');
@@ -271,17 +271,24 @@ describe('configuration de deploiement', () => {
     expect(workflow).toContain('npm run backup:coordinated --');
     expect(workflow).toContain('npm run backup:coordinated:verify --');
     expect(workflow).toContain('actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02');
-    expect(workflow).toContain('retention-days: 30');
+    expect(workflow).toContain("BACKUP_RETENTION_DAYS: ${{ vars.BACKUP_RETENTION_DAYS || '30' }}");
+    expect(workflow).toContain('retention-days: ${{ env.BACKUP_RETENTION_DAYS }}');
+    expect(workflow.indexOf('node scripts/continuity-policy.mjs'))
+      .toBeLessThan(workflow.indexOf('npm run backup:coordinated --'));
     expect(workflow.indexOf('backup:coordinated:verify'))
       .toBeLessThan(workflow.indexOf('actions/upload-artifact'));
     expect(workflow).toContain('alert_test:');
     expect(workflow).toContain('MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}');
-    expect(workflow).toContain("if: failure() && matrix.target == 'staging'");
-    expect(workflow).toContain("checks: [{ name: 'continuity-backup', ok: false, errorCode: 'backup-failed' }]");
-    expect(workflow).toContain("if: inputs.alert_test == true && matrix.target == 'staging'");
-    expect(workflow).toContain("MONITOR_ALERT_DRILL: 'true'");
-    expect(workflow).toContain("errorCode: 'expected-test-alert'");
-    expect(workflow).toContain('node scripts/send-operations-alert.mjs --file="$alert_file"');
+    const alert = workflow.slice(workflow.indexOf('\n  alert:'));
+    expect(alert).toContain('if: ${{ always() }}');
+    expect(alert).toContain('needs: [backup, preserve-copy]');
+    expect(alert).toContain('environment: ${{ matrix.target }}');
+    expect(alert).toContain('MONITOR_TARGET: ${{ matrix.target }}');
+    expect(alert).toContain("MONITOR_ALERT_DRILL: ${{ inputs.alert_test == true && 'true' || 'false' }}");
+    expect(alert).toContain('node scripts/send-continuity-alert.mjs');
+    expect(workflow).toContain('test "$(jq -r \'.immutable\' <<<"$release_json")" = "true"');
+    expect(workflow).toContain('"sha256:$archive_sha256"');
+    expect(workflow).toContain('continuity-backup-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}');
   });
 
   test('vercel.json declare le fallback SPA et les principaux headers de securite', () => {
@@ -382,8 +389,9 @@ describe('configuration de deploiement', () => {
     expect(preservedBackup).toBeGreaterThan(verifiedBackup);
     expect(databaseWrite).toBeGreaterThan(preservedBackup);
     expect(workflow.slice(backendStart, databaseWrite)).toContain(
-      'STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}',
+      "STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets[vars.BACKUP_KEY_SECRET_NAME || 'STORAGE_BACKUP_ENCRYPTION_KEY'] }}",
     );
+    expect(workflow.slice(backendStart, databaseWrite)).toContain("BACKUP_KEY_ID: ${{ vars.BACKUP_KEY_ID || 'staging-legacy-release-key' }}");
     expect(workflow.slice(backendStart, databaseWrite)).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");
     expect(workflow.slice(backendStart, databaseWrite)).toContain("BACKUP_PREPARE_DUMP_IMAGE: 'true'");
     expect(databaseWrite).toBeGreaterThan(targetGate);
@@ -521,7 +529,8 @@ describe('configuration de deploiement', () => {
     expect(functionAclGate).toBeGreaterThan(storageWrite);
     expect(edgeWrite).toBeGreaterThan(functionAclGate);
     expect(edgeWrite).toBeGreaterThan(preservedBackup);
-    expect(production).toContain('STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}');
+    expect(production).toContain("STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets[vars.BACKUP_KEY_SECRET_NAME || 'STORAGE_BACKUP_ENCRYPTION_KEY'] }}");
+    expect(production).toContain('BACKUP_KEY_ID: ${{ vars.BACKUP_KEY_ID }}');
     expect(production).toContain("BACKUP_REQUIRE_SESSION_POOLER: 'true'");
     expect(production).toContain("BACKUP_PREPARE_DUMP_IMAGE: 'true'");
     expect(production).toContain('GOVERNANCE_EVIDENCE_JSON: ${{ secrets.GOVERNANCE_EVIDENCE_JSON }}');

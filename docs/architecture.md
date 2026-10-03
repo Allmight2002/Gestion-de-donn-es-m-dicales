@@ -471,6 +471,12 @@ doivent pas être pilotables par le navigateur seul. Détail complet :
 | `create-mission-account` | Crée, révèle, régénère ou révoque les justificatifs d'un `saisisseur` | Nécessite l'admin Auth et la clé de chiffrement Edge ; seul le propriétaire choisit l'identifiant et consulte le mot de passe généré |
 | `purge-deleted-base` | Prépare, supprime les objets Storage et finalise la purge immédiate d'une base de la corbeille | Le propriétaire est vérifié par RPC authentifiée ; le service seul finalise après manifeste, suppression vérifiée des quatre buckets et conservation de l'audit/journal d'export |
 
+Pour `signed-read`, le rôle serveur reçoit uniquement SELECT sur les colonnes
+`patient(id, base_id)` nécessaires au rattachement et INSERT sur
+`audit_log(user_id, action, entity, entity_id, base_id)`. `BYPASSRLS` ne remplace pas
+ces droits SQL. La migration additive correspondante n'ajoute aucun droit aux rôles
+anonyme ou authentifié, ni UPDATE/DELETE serveur sur ces tables.
+
 > Une modification locale sous `supabase/functions/` **ne change pas le cloud** : chaque fonction
 > doit être redéployée explicitement. Les validations locales ne prouvent jamais la version
 > déployée — d'où `npm run release:edge:check` et `npm run release:drift`.
@@ -573,3 +579,9 @@ navigateur O6 et l'activation/release O7 ne sont pas validées. Détail :
   preuves de reprise/gouvernance et les contrôles de dérive cloud — voir
   [supervision.md](supervision.md), [continuite.md](continuite.md) et
   [operations-readiness.md](operations-readiness.md).
+  Les ensembles v2 exportent séparément les définitions Auth/Storage et les lient
+  aux données et octets par HMAC. Le lanceur fictif réconcilie une cible locale
+  neuve de version compatible et refuse les divergences gérées non prises en charge.
+  Les exports successifs restent non atomiques ; le cron production, le coffre,
+  la copie indépendante et les alertes nécessitent une configuration et des preuves
+  opérationnelles distinctes — voir [runbook](continuite-production-runbook.md).

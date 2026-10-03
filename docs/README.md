@@ -183,3 +183,12 @@ Aucun fichier d'exemple d'import n'est actuellement suivi dans le checkout. Pré
 
 *Index vérifié le 16 septembre 2026. Pour rester juste, il doit être relu à chaque ajout de
 document dans `docs/`.*
+
+### Préparation continuité production
+
+- [Runbook sauvegarde/restauration](continuite-production-runbook.md) — configuration,
+  coffre et suppléant, copie indépendante, exercice fictif et autorisation d'activation.
+- [Rapport du 2 octobre 2026](audits/rapport-continuite-production-2026-10-02.md) — tests
+  locaux et blocages historiques de la première session.
+- [Exercice isolé du 3 octobre 2026](audits/rapport-exercice-restauration-isolee-2026-10-03.md) —
+  restauration réelle DB/Auth/Storage, droits, fichiers, navigateur, mesures et limites.

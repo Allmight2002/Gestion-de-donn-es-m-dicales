@@ -109,7 +109,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}
+          STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets[vars.BACKUP_KEY_SECRET_NAME || 'STORAGE_BACKUP_ENCRYPTION_KEY'] }}
+          BACKUP_KEY_ID: ${{ vars.BACKUP_KEY_ID || 'staging-legacy-release-key' }}
           BACKUP_REQUIRE_SESSION_POOLER: 'true'
           BACKUP_PREPARE_DUMP_IMAGE: 'true'
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
@@ -683,7 +684,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}
+          STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets[vars.BACKUP_KEY_SECRET_NAME || 'STORAGE_BACKUP_ENCRYPTION_KEY'] }}
+          BACKUP_KEY_ID: ${{ vars.BACKUP_KEY_ID }}
           BACKUP_REQUIRE_SESSION_POOLER: 'true'
           BACKUP_PREPARE_DUMP_IMAGE: 'true'
           CLAMAV_SCAN_URL: ${{ secrets.CLAMAV_SCAN_URL }}
