@@ -109,7 +109,7 @@ async function main() {
     drill: process.env.MONITOR_ALERT_DRILL === 'true',
   });
   await deliverOperationsAlert(config, alert);
-  console.log(`Alerte ${alert.event} ${config.target}: livree (contenu expurge).`);
+  console.log(`Alerte ${alert.event} ${config.target}: acceptee HTTP (reception destinataire a confirmer; contenu expurge).`);
 }
 
 const isMain = process.argv[1]

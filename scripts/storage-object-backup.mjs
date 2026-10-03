@@ -10,11 +10,13 @@ import {
   mkdir,
   readFile,
   rename,
+  rm,
   writeFile,
 } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PRODUCTION_PROJECT_REF, STAGING_PROJECT_REF, projectRefFromSupabaseUrl } from './check-supabase-target.mjs';
 import { StorageClient } from '@supabase/storage-js';
 
 const FORMAT = 'meddata-storage-backup/v1';
@@ -77,9 +79,22 @@ export function decryptPayload(key, encrypted) {
 export function isLoopbackStorageUrl(value) {
   try {
     const url = new URL(value);
-    return ['127.0.0.1', 'localhost', '::1'].includes(url.hostname);
+    return ['http:', 'https:'].includes(url.protocol)
+      && !url.username && !url.password
+      && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
   } catch {
     return false;
+  }
+}
+
+export function validateStorageRestoreTarget(value, env = process.env) {
+  const ref = projectRefFromSupabaseUrl(value);
+  if ([PRODUCTION_PROJECT_REF, STAGING_PROJECT_REF].includes(ref)) {
+    throw new Error('Restauration sur une cible MedData active interdite.');
+  }
+  if (!isLoopbackStorageUrl(value) && (env.STORAGE_RESTORE_ALLOW_REMOTE !== 'true'
+      || !ref || env.STORAGE_RESTORE_ISOLATED_PROJECT_REF !== ref)) {
+    throw new Error('Restauration distante refusee sans reference explicite de cible isolee.');
   }
 }
 
@@ -367,81 +382,85 @@ async function backup() {
   await ensureAbsent(partial);
   await mkdir(resolve(partial, 'objects'), { recursive: true, mode: 0o700 });
 
-  const client = storageClient(sourceApi, serviceKey);
-  const { data: buckets, error: bucketError } = await client.listBuckets();
-  if (bucketError) throw storageError('Inventaire des buckets Storage', bucketError);
-  console.log(`Inventaire Storage: ${buckets.length} buckets (noms masques).`);
+  try {
+    const client = storageClient(sourceApi, serviceKey);
+    const { data: buckets, error: bucketError } = await client.listBuckets();
+    if (bucketError) throw storageError('Inventaire des buckets Storage', bucketError);
+    console.log(`Inventaire Storage: ${buckets.length} buckets (noms masques).`);
 
-  const manifest = {
-    format: FORMAT,
-    createdAt: new Date().toISOString(),
-    sourceApiSha256: sha256(new URL(sourceApi).origin),
-    buckets: [],
-    objectCount: 0,
-    totalBytes: 0,
-  };
-  let index = 0;
-
-  const sortedBuckets = [...buckets].sort((left, right) => left.id.localeCompare(right.id));
-  for (const [bucketIndex, bucket] of sortedBuckets.entries()) {
-    const listed = await listAllObjects(client, bucket.id, maxObjects - manifest.objectCount);
-    console.log(`Inventaire bucket ${bucketIndex + 1}/${sortedBuckets.length}: ${listed.length} objets.`);
-    const bucketEntry = {
-      id: bucket.id,
-      public: Boolean(bucket.public),
-      fileSizeLimit: bucket.file_size_limit ?? null,
-      allowedMimeTypes: bucket.allowed_mime_types ?? null,
-      objects: [],
+    const manifest = {
+      format: FORMAT,
+      createdAt: new Date().toISOString(),
+      sourceApiSha256: sha256(new URL(sourceApi).origin),
+      buckets: [],
+      objectCount: 0,
+      totalBytes: 0,
     };
-    for (const listedObject of listed) {
-      const bucketClient = client.from(bucket.id);
-      const data = await downloadObjectWithRetry(
-        () => bucketClient.download(listedObject.name),
-        {
-          maxAttempts: downloadMaxAttempts,
-          retryBaseMs: downloadRetryBaseMs,
-        },
-      );
-      const plaintext = Buffer.from(await data.arrayBuffer());
-      manifest.totalBytes += plaintext.length;
-      if (manifest.totalBytes > maxBytes) {
-        throw new Error(`La limite de ${maxBytes} octets Storage est depassee.`);
-      }
-      index += 1;
-      const blobFile = `objects/${String(index).padStart(8, '0')}.bin`;
-      await writeFile(resolve(partial, blobFile), encryptPayload(key, plaintext), {
-        flag: 'wx',
-        mode: 0o600,
-      });
-      bucketEntry.objects.push({
-        name: listedObject.name,
-        blobFile,
-        sha256: sha256(plaintext),
-        size: plaintext.length,
-        metadata: limitedMetadata(listedObject.metadata),
-      });
-      manifest.objectCount += 1;
-    }
-    manifest.buckets.push(bucketEntry);
-  }
+    let index = 0;
 
-  validateManifest(manifest);
-  const encryptedManifest = encryptPayload(key, Buffer.from(JSON.stringify(manifest), 'utf8'));
-  await writeFile(resolve(partial, 'manifest.bin'), encryptedManifest, { flag: 'wx', mode: 0o600 });
-  const header = {
-    format: FORMAT,
-    createdAt: manifest.createdAt,
-    encryption: 'AES-256-GCM',
-    encryptedManifestFile: 'manifest.bin',
-    encryptedManifestSha256: sha256(encryptedManifest),
-  };
-  await writeFile(resolve(partial, 'backup.json'), `${JSON.stringify(header, null, 2)}\n`, {
-    flag: 'wx',
-    mode: 0o600,
-  });
-  await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-  await rename(partial, destination);
-  console.log(`Sauvegarde Storage chiffree: OK (${manifest.objectCount} objets, ${manifest.totalBytes} octets; noms masques).`);
+    const sortedBuckets = [...buckets].sort((left, right) => left.id.localeCompare(right.id));
+    for (const [bucketIndex, bucket] of sortedBuckets.entries()) {
+      const listed = await listAllObjects(client, bucket.id, maxObjects - manifest.objectCount);
+      console.log(`Inventaire bucket ${bucketIndex + 1}/${sortedBuckets.length}: ${listed.length} objets.`);
+      const bucketEntry = {
+        id: bucket.id,
+        public: Boolean(bucket.public),
+        fileSizeLimit: bucket.file_size_limit ?? null,
+        allowedMimeTypes: bucket.allowed_mime_types ?? null,
+        objects: [],
+      };
+      for (const listedObject of listed) {
+        const bucketClient = client.from(bucket.id);
+        const data = await downloadObjectWithRetry(
+          () => bucketClient.download(listedObject.name),
+          {
+            maxAttempts: downloadMaxAttempts,
+            retryBaseMs: downloadRetryBaseMs,
+          },
+        );
+        const plaintext = Buffer.from(await data.arrayBuffer());
+        manifest.totalBytes += plaintext.length;
+        if (manifest.totalBytes > maxBytes) {
+          throw new Error(`La limite de ${maxBytes} octets Storage est depassee.`);
+        }
+        index += 1;
+        const blobFile = `objects/${String(index).padStart(8, '0')}.bin`;
+        await writeFile(resolve(partial, blobFile), encryptPayload(key, plaintext), {
+          flag: 'wx',
+          mode: 0o600,
+        });
+        bucketEntry.objects.push({
+          name: listedObject.name,
+          blobFile,
+          sha256: sha256(plaintext),
+          size: plaintext.length,
+          metadata: limitedMetadata(listedObject.metadata),
+        });
+        manifest.objectCount += 1;
+      }
+      manifest.buckets.push(bucketEntry);
+    }
+
+    validateManifest(manifest);
+    const encryptedManifest = encryptPayload(key, Buffer.from(JSON.stringify(manifest), 'utf8'));
+    await writeFile(resolve(partial, 'manifest.bin'), encryptedManifest, { flag: 'wx', mode: 0o600 });
+    const header = {
+      format: FORMAT,
+      createdAt: manifest.createdAt,
+      encryption: 'AES-256-GCM',
+      encryptedManifestFile: 'manifest.bin',
+      encryptedManifestSha256: sha256(encryptedManifest),
+    };
+    await writeFile(resolve(partial, 'backup.json'), `${JSON.stringify(header, null, 2)}\n`, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+    await rename(partial, destination);
+    console.log(`Sauvegarde Storage chiffree: OK (${manifest.objectCount} objets, ${manifest.totalBytes} octets; noms masques).`);
+  } finally {
+    await rm(partial, { recursive: true, force: true });
+  }
 }
 
 async function verify() {
@@ -466,14 +485,15 @@ async function restoreBackup() {
     process.env.TARGET_STORAGE_API_URL,
     process.env.TARGET_SUPABASE_URL,
   );
-  if (!isLoopbackStorageUrl(targetApi) && process.env.STORAGE_RESTORE_ALLOW_REMOTE !== 'true') {
-    throw new Error('Restauration Storage distante refusee sans STORAGE_RESTORE_ALLOW_REMOTE=true.');
-  }
+  validateStorageRestoreTarget(targetApi);
   const targetKey = clean(
     process.env.TARGET_STORAGE_SERVICE_ROLE_KEY || process.env.TARGET_SUPABASE_SERVICE_ROLE_KEY,
   );
   const encryptionKey = parseEncryptionKey(process.env.STORAGE_BACKUP_ENCRYPTION_KEY);
   const { manifest } = await readManifest(backupRoot, encryptionKey);
+  for (const bucket of manifest.buckets) {
+    for (const object of bucket.objects) await readAndVerifyObject(backupRoot, encryptionKey, object);
+  }
   const client = storageClient(targetApi, targetKey);
   const { data: existingBuckets, error: bucketError } = await client.listBuckets();
   if (bucketError) throw storageError('Lecture des buckets cibles', bucketError);
@@ -532,8 +552,8 @@ async function main() {
 const isMain = process.argv[1]
   && resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
 if (isMain) {
-  main().catch((error) => {
-    console.error(`Operation Storage impossible: ${error instanceof Error ? error.message : 'erreur inconnue'}`);
+  main().catch(() => {
+    console.error('Operation Storage impossible (detail masque); verifier configuration, cible et integrite.');
     process.exitCode = 1;
   });
 }
