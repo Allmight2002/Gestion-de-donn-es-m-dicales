@@ -27,6 +27,11 @@ describe('proposeFieldsFromSheet (F1)', () => {
     expect(p.every((f) => f.include && f.scope === 'patient')).toBe(true);
   });
 
+  test('une colonne d\'heures HH:MM devient une heure, pas une date et heure', () => {
+    const p = proposeFieldsFromSheet(['Heure incision'], [['08:30'], ['14:05'], ['23:59:00']]);
+    expect(p[0].type).toBe('time');
+  });
+
   test('booleen detecte sur oui/non ; normalizeKey enleve accents/ponctuation', () => {
     const p = proposeFieldsFromSheet(['Fumeur ?'], [['oui'], ['non'], ['oui']]);
     expect(p[0].fieldKey).toBe('fumeur');

@@ -11,7 +11,7 @@ on:
         type: choice
         options: [staging, production, all]
       alert_test:
-        description: Envoyer une alerte synthetique de sauvegarde staging
+        description: Envoyer une alerte synthetique pour la cible choisie
         required: true
         default: false
         type: boolean
@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(github.event_name == 'schedule' && '["staging"]' || (inputs.target == 'all' && '["staging","production"]' || format('["{0}"]', inputs.target))) }}
+        target: ${{ fromJSON(github.event_name == 'schedule' && (vars.CONTINUITY_PRODUCTION_SCHEDULE_ENABLED == 'true' && '["staging","production"]' || '["staging"]') || (inputs.target == 'all' && '["staging","production"]' || format('["{0}"]', inputs.target))) }}
     environment: ${{ matrix.target }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -40,7 +40,9 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      STORAGE_BACKUP_ENCRYPTION_KEY: ${{ matrix.target == 'staging' && secrets.STORAGE_BACKUP_ENCRYPTION_KEY_20260723 || secrets.STORAGE_BACKUP_ENCRYPTION_KEY }}
+      STORAGE_BACKUP_ENCRYPTION_KEY: ${{ secrets[vars.BACKUP_KEY_SECRET_NAME || (matrix.target == 'staging' && 'STORAGE_BACKUP_ENCRYPTION_KEY_20260723' || 'STORAGE_BACKUP_ENCRYPTION_KEY')] }}
+      BACKUP_KEY_ID: ${{ vars.BACKUP_KEY_ID || (matrix.target == 'staging' && 'staging-20260723' || '') }}
+      BACKUP_RETENTION_DAYS: ${{ vars.BACKUP_RETENTION_DAYS || '30' }}
       BACKUP_REQUIRE_SESSION_POOLER: 'true'
       BACKUP_PREPARE_DUMP_IMAGE: 'true'
       DO_NOT_TRACK: '1'
@@ -59,12 +61,12 @@ jobs:
         run: |
           set -euo pipefail
           test "$CONTINUITY_BACKUP_ENABLED" = "true"
+          node scripts/continuity-policy.mjs
           npm run release:target -- --target="$BACKUP_TARGET"
 
-      - name: Require the staging backup alert destination
-        if: matrix.target == 'staging'
+      - name: Require the backup alert destination
         env:
-          MONITOR_TARGET: staging
+          MONITOR_TARGET: ${{ matrix.target }}
           MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}
         run: node scripts/send-operations-alert.mjs --check-config
 
@@ -72,7 +74,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          backup_dir="$RUNNER_TEMP/continuity-backup-$BACKUP_TARGET-$GITHUB_RUN_ID"
+          backup_dir="$RUNNER_TEMP/continuity-backup-$BACKUP_TARGET-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           echo "BACKUP_SET_DIR=$backup_dir" >> "$GITHUB_ENV"
           npm run backup:coordinated -- --target="$BACKUP_TARGET" --output="$backup_dir"
           npm run backup:coordinated:verify -- --backup="$backup_dir"
@@ -80,61 +82,22 @@ jobs:
       - name: Preserve the verified encrypted backup outside the runner
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: continuity-backup-${{ matrix.target }}-${{ github.run_id }}
+          name: continuity-backup-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.BACKUP_SET_DIR }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: ${{ env.BACKUP_RETENTION_DAYS }}
 
       - name: Remove the runner copy
         if: always()
         shell: bash
-        run: rm -rf -- "$RUNNER_TEMP/continuity-backup-$BACKUP_TARGET-$GITHUB_RUN_ID"
+        run: rm -rf -- "$RUNNER_TEMP/continuity-backup-$BACKUP_TARGET-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
 
-      - name: Deliver the redacted staging backup failure alert
-        if: failure() && matrix.target == 'staging'
-        env:
-          MONITOR_TARGET: staging
-          MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          alert_file="$RUNNER_TEMP/continuity-backup-alert.json"
-          ALERT_FILE="$alert_file" node --input-type=module <<'NODE'
-          import { writeFileSync } from 'node:fs';
-          writeFileSync(process.env.ALERT_FILE, JSON.stringify({
-            format: 'meddata-operations-monitor/v1',
-            observedAt: new Date().toISOString(),
-            target: 'staging',
-            checks: [{ name: 'continuity-backup', ok: false, errorCode: 'backup-failed' }],
-          }), { mode: 0o600 });
-          NODE
-          node scripts/send-operations-alert.mjs --file="$alert_file"
-          rm -f -- "$alert_file"
-
-      - name: Exercise the staging backup alert on explicit request
-        if: inputs.alert_test == true && matrix.target == 'staging'
-        env:
-          MONITOR_TARGET: staging
-          MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}
-          MONITOR_ALERT_DRILL: 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          alert_file="$RUNNER_TEMP/continuity-backup-alert.json"
-          ALERT_FILE="$alert_file" node --input-type=module <<'NODE'
-          import { writeFileSync } from 'node:fs';
-          writeFileSync(process.env.ALERT_FILE, JSON.stringify({
-            format: 'meddata-operations-monitor/v1',
-            observedAt: new Date().toISOString(),
-            target: 'staging',
-            checks: [{ name: 'continuity-backup', ok: false, errorCode: 'expected-test-alert' }],
-          }), { mode: 0o600 });
-          NODE
-          node scripts/send-operations-alert.mjs --file="$alert_file"
-          rm -f -- "$alert_file"
-
-  preserve-staging-copy:
-    if: ${{ always() && (github.event_name == 'schedule' || inputs.target == 'staging' || inputs.target == 'all') }}
+  preserve-copy:
+    if: ${{ always() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(github.event_name == 'schedule' && (vars.CONTINUITY_PRODUCTION_SCHEDULE_ENABLED == 'true' && '["staging","production"]' || '["staging"]') || (inputs.target == 'all' && '["staging","production"]' || format('["{0}"]', inputs.target))) }}
     needs: backup
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -142,22 +105,23 @@ jobs:
       actions: read
       contents: write
     steps:
-      - name: Download the verified encrypted staging backup
+      - name: Download the verified encrypted backup
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: continuity-backup-staging-${{ github.run_id }}
-          path: ${{ runner.temp }}/staging-backup
+          name: continuity-backup-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/encrypted-backup
 
-      - name: Preserve the staging backup as an immutable release
+      - name: Preserve the backup as an immutable release
         env:
           GH_TOKEN: ${{ github.token }}
+          BACKUP_TARGET: ${{ matrix.target }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="continuity-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          tag="continuity-${BACKUP_TARGET}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           archive="$RUNNER_TEMP/${tag}.tar.gz"
           asset_name="${tag}.tar.gz"
-          backup_dir="$RUNNER_TEMP/staging-backup"
+          backup_dir="$RUNNER_TEMP/encrypted-backup"
           trap 'rm -rf -- "$archive" "$backup_dir"' EXIT
           tar -czf "$archive" -C "$backup_dir" .
           archive_sha256="$(sha256sum "$archive" | cut -d ' ' -f 1)"
@@ -167,8 +131,8 @@ jobs:
             --draft \
             --latest=false \
             --target "$GITHUB_SHA" \
-            --title "MedData staging continuity backup ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}" \
-            --notes "Encrypted and HMAC-verified staging backup. Run ${GITHUB_RUN_ID}, attempt ${GITHUB_RUN_ATTEMPT}, commit ${GITHUB_SHA}, archive SHA-256 ${archive_sha256}. Fictitious staging data only; no plaintext is published."
+            --title "MedData ${BACKUP_TARGET} continuity backup ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}" \
+            --notes "Encrypted and HMAC-verified ${BACKUP_TARGET} backup. Run ${GITHUB_RUN_ID}, attempt ${GITHUB_RUN_ATTEMPT}, commit ${GITHUB_SHA}, archive SHA-256 ${archive_sha256}. No plaintext is published."
           gh release edit "$tag" \
             --repo "$GITHUB_REPOSITORY" \
             --draft=false \
@@ -185,3 +149,29 @@ jobs:
           test "$(jq -r '.draft' <<<"$release_json")" = "false"
           test "$(jq -r '.target_commitish' <<<"$release_json")" = "$GITHUB_SHA"
           test "$(jq -r --arg name "$asset_name" '.assets[] | select(.name == $name) | .digest' <<<"$release_json")" = "sha256:$archive_sha256"
+
+  alert:
+    if: ${{ always() }}
+    needs: [backup, preserve-copy]
+    permissions:
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(github.event_name == 'schedule' && (vars.CONTINUITY_PRODUCTION_SCHEDULE_ENABLED == 'true' && '["staging","production"]' || '["staging"]') || (inputs.target == 'all' && '["staging","production"]' || format('["{0}"]', inputs.target))) }}
+    environment: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Assess this target and deliver a redacted alert independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONITOR_TARGET: ${{ matrix.target }}
+          MONITOR_ALERT_WEBHOOK_URL: ${{ secrets.MONITOR_ALERT_WEBHOOK_URL }}
+          MONITOR_ALERT_DRILL: ${{ inputs.alert_test == true && 'true' || 'false' }}
+        run: node scripts/send-continuity-alert.mjs

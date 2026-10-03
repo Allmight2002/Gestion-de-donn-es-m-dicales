@@ -16,6 +16,7 @@ import {
   buildProvenance,
   codingColumnId,
   columnId,
+  type ExcelTemporalKind,
   type ExportField,
   type ExportTable,
   extractMultivalueCodes,
@@ -70,7 +71,7 @@ export const EXPORT_LIMITS = {
   xlsxColumns: 256,
 } as const;
 
-type CollectionFailureKind = 'read' | 'inconsistent' | 'limit';
+type CollectionFailureKind = 'read' | 'inconsistent' | 'limit' | 'changed';
 
 class ExportCollectionError extends Error {
   constructor(
@@ -100,8 +101,9 @@ interface PaginatedRead<T> {
 
 /**
  * Lit une collection PostgREST avec un compte exact, un ordre impose par l'appelant et des plages
- * inclusives. Le compte est reverifie a chaque page afin qu'une mutation concurrente, une page
- * tronquee ou un plafond PostgREST ne puisse jamais produire un export partiel en HTTP 200.
+ * inclusives. Le compte est reverifie a chaque page pour refuser les variations de cardinalite,
+ * pages tronquees et plafonds PostgREST. Le jeton global de sources couvre aussi les UPDATE
+ * et les remplacements de lignes a cardinalite constante, entre toutes les collections.
  */
 async function readAllPages<T>(options: PaginatedRead<T>): Promise<T[]> {
   const rows: T[] = [];
@@ -179,6 +181,13 @@ async function readInChunks<T>(options: ChunkedRead<T>): Promise<T[]> {
 }
 
 function collectionFailureResponse(error: ExportCollectionError): Response {
+  if (error.kind === 'changed') {
+    return json(409, {
+      code: 'EXPORT_SOURCE_CHANGED',
+      error: 'Export refuse : les donnees ont change pendant la generation. Relancez l export.',
+      resource: error.resource,
+    });
+  }
   if (error.kind === 'limit') {
     return json(413, {
       code: 'EXPORT_LIMIT_EXCEEDED',
@@ -200,6 +209,16 @@ function collectionFailureResponse(error: ExportCollectionError): Response {
     error: 'Lecture des donnees d export impossible',
     resource: error.resource,
   });
+}
+
+/** Les compteurs bigint voyagent en texte : aucune perte de precision JSON/JavaScript. */
+async function readSourceRevision(admin: SupabaseClient, cohortId: string): Promise<string> {
+  const { data, error } = await admin.rpc('export_source_revision', { p_cohort_id: cohortId });
+  if (error) throw new ExportCollectionError('read', 'source_revision');
+  if (typeof data !== 'string' || !/^v1:[0-9a-f-]{36}:\d+:\d+:\d+:\d+$/.test(data)) {
+    throw new ExportCollectionError('inconsistent', 'source_revision');
+  }
+  return data;
 }
 
 export function assertExportShapeWithinLimits(
@@ -248,19 +267,20 @@ export function exportFilenameSegment(value: unknown, fallback: string): string 
 }
 
 /**
- * Mappe les colonnes date/datetime de la feuille principale pour l'ecriture de cellules
+ * Mappe les colonnes date/datetime/heure de la feuille principale pour l'ecriture de cellules
  * Excel natives (L48). En mode RENCONTRE, `encounter_date` est une colonne de date meta ;
  * en mode PATIENT, seuls les champs rendus (patient + rencontre agreges) portent des dates.
  */
 function temporalColumnsOf(
   fields: ReturnType<typeof mergeExportFields>,
   mode: 'encounter' | 'patient',
-): Map<string, 'date' | 'datetime'> {
-  const map = new Map<string, 'date' | 'datetime'>();
+): Map<string, ExcelTemporalKind> {
+  const map = new Map<string, ExcelTemporalKind>();
   const rendered = mode === 'patient' ? fields : fields.filter((f) => f.scope === 'encounter');
   for (const f of rendered) {
     if (f.type === 'date') map.set(columnId(f), 'date');
     else if (f.type === 'datetime') map.set(columnId(f), 'datetime');
+    else if (f.type === 'time') map.set(columnId(f), 'time');
   }
   if (mode === 'encounter') map.set('encounter_date', 'date');
   return map;
@@ -270,13 +290,14 @@ type WorkSheetCells = Record<string, unknown> & { '!ref'?: string };
 
 /**
  * Pose le format d'affichage (cellule Excel native, type nombre) sur les colonnes de date :
- * `yyyy-mm-dd` pour les dates, `yyyy-mm-dd hh:mm:ss` pour les datetime (secondes fixes, UTC).
+ * `yyyy-mm-dd` pour les dates, `yyyy-mm-dd hh:mm:ss` pour les datetime (secondes fixes, UTC),
+ * `hh:mm:ss` pour les heures seules (heure saisie, sans fuseau).
  * Sans ce format, un nombre de serie s'afficherait comme un entier illisible.
  */
 function applyExcelDateFormats(
   sheet: WorkSheetCells,
   columns: readonly string[],
-  temporalColumns: ReadonlyMap<string, 'date' | 'datetime'>,
+  temporalColumns: ReadonlyMap<string, ExcelTemporalKind>,
 ): void {
   const ref = sheet['!ref'];
   if (!ref) return;
@@ -284,7 +305,7 @@ function applyExcelDateFormats(
   for (const [column, kind] of temporalColumns) {
     const columnIndex = columns.indexOf(column);
     if (columnIndex < 0 || columnIndex > range.e.c) continue;
-    const format = kind === 'datetime' ? 'yyyy-mm-dd hh:mm:ss' : 'yyyy-mm-dd';
+    const format = kind === 'datetime' ? 'yyyy-mm-dd hh:mm:ss' : kind === 'time' ? 'hh:mm:ss' : 'yyyy-mm-dd';
     for (let row = range.s.r + 1; row <= range.e.r; row++) {
       const cell = sheet[XLSX.utils.encode_cell({ r: row, c: columnIndex })] as
         | { t?: string; z?: string }
@@ -345,25 +366,40 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
   }
   const { cohortId, format, options } = parsed;
 
-  const { data: cohort, error: cohortErr } = await admin
+  const { data: initialCohort, error: cohortErr } = await admin
     .from('cohort')
     .select('id, base_id, name, cohort_type')
     .eq('id', cohortId)
     .maybeSingle();
-  if (cohortErr || !cohort) return json(404, { error: 'Cohorte introuvable' });
-  if (cohort.cohort_type !== 'snapshot') return json(409, { error: 'Seule une cohorte figee est exportable' });
+  if (cohortErr || !initialCohort) return json(404, { error: 'Cohorte introuvable' });
+  if (initialCohort.cohort_type !== 'snapshot') return json(409, { error: 'Seule une cohorte figee est exportable' });
 
-  const { data: canExport, error: canExportErr } = await asUser.rpc('can_export_data', { p_base: cohort.base_id });
+  const { data: canExport, error: canExportErr } = await asUser.rpc('can_export_data', {
+    p_base: initialCohort.base_id,
+  });
   if (canExportErr || canExport !== true) return json(403, { error: 'Acces export refuse' });
 
-  const { data: base, error: baseErr } = await admin
-    .from('base')
-    .select('name, current_template_version_id')
-    .eq('id', cohort.base_id)
-    .maybeSingle();
-  if (baseErr || !base) return collectionFailureResponse(new ExportCollectionError('read', 'base'));
-
   try {
+    const sourceRevision = await readSourceRevision(admin, cohortId);
+    // La premiere lecture sert uniquement a l'autorisation. Toutes les donnees restituees,
+    // y compris les noms et la revision active, sont relues DANS la fenetre controlee.
+    const { data: cohort, error: guardedCohortErr } = await admin
+      .from('cohort')
+      .select('id, base_id, name, cohort_type')
+      .eq('id', cohortId)
+      .maybeSingle();
+    if (
+      guardedCohortErr || !cohort || cohort.base_id !== initialCohort.base_id ||
+      cohort.cohort_type !== 'snapshot' || sourceRevision.split(':')[1] !== cohort.base_id
+    ) throw new ExportCollectionError('changed', 'source_revision');
+
+    const { data: base, error: baseErr } = await admin
+      .from('base')
+      .select('name, current_template_version_id')
+      .eq('id', cohort.base_id)
+      .maybeSingle();
+    if (baseErr || !base) return collectionFailureResponse(new ExportCollectionError('read', 'base'));
+
     interface CohortMemberRow {
       patient_id: string;
     }
@@ -1207,6 +1243,12 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     }
 
     const fileHash = await sha256Hex(bytes);
+    // Un compte exact ne detecte ni UPDATE ni remplacement a cardinalite constante.
+    // Les compteurs avancent dans la transaction des sources : egalite = aucune
+    // mutation validee entre les lectures. Apres ce point, seuls les octets figes sont utilises.
+    if (await readSourceRevision(admin, cohortId) !== sourceRevision) {
+      throw new ExportCollectionError('changed', 'source_revision');
+    }
     const filename = buildExportFilename(base.name, cohort.name, options.mode, options.profile, generatedAt, format);
     // Le chemin Storage reste pseudonymise : le nom metier n'est conserve que dans le journal
     // autorise et transmis comme Content-Disposition au moment de la lecture signee.
@@ -1233,6 +1275,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
         export_options: {
           ...options,
           generated_by: 'edge:generate-export',
+          source_revision: sourceRevision,
           dictionary_included: format === 'xlsx',
           download_filename: filename,
           // Trace des exclusions : un export partiel doit rester explicable apres coup,

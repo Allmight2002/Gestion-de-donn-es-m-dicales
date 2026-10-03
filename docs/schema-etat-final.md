@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261003100000_ux_patient_global_search.sql`
-- Tables : 60 · Policies RLS : 72 · Triggers : 99 · Fonctions : 422
+- Dernière migration incluse : `20261004090000_time_field_type.sql`
+- Tables : 60 · Policies RLS : 72 · Triggers : 151 · Fonctions : 430
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -64,6 +64,10 @@ Policies :
 - `base_update` (UPDATE) — USING is_base_owner(id) · WITH CHECK is_base_owner(id)
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_base_form_revision` — BEFORE UPDATE → `bump_base_form_revision()`
 - `trg_base_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_base()`
 - `trg_base_owner_immutable` — BEFORE UPDATE → `guard_base_owner_immutable()`
@@ -304,6 +308,10 @@ Policies :
 - `c_update` (UPDATE) — USING can_curate(base_id) · WITH CHECK can_curate(base_id)
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_cohort_base_immutable` — BEFORE UPDATE → `guard_cohort_base_immutable()`
 
 ### cohort_encounter_member · RLS activée
@@ -320,6 +328,10 @@ Policies :
 - `cem_select` (SELECT) — USING (is_medecin() AND has_base_access(base_of_cohort(cohort_id)))
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_cohort_encounter_membership_scope` — AFTER INSERT/UPDATE → `guard_cohort_encounter_membership()`
 
 ### cohort_member · RLS activée
@@ -336,6 +348,10 @@ Policies :
 - `cm_select` (SELECT) — USING (is_medecin() AND has_base_access(base_of_cohort(cohort_id)))
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_cohort_patient_membership_scope` — AFTER INSERT/UPDATE → `guard_cohort_patient_membership()`
 
 ### common_layout_operation · RLS activée
@@ -450,6 +466,10 @@ Policies :
 - `e_select` (SELECT) — USING (has_base_access(base_of_patient(patient_id)) AND (deleted_at IS NULL))
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_diagnosis_client` — BEFORE INSERT/UPDATE → `guard_diagnosis_submission()`
 - `trg_encounter_cross_sectional_rejected` — BEFORE INSERT → `reject_cross_sectional_encounter()`
 - `trg_encounter_curated_complete` — BEFORE INSERT/UPDATE → `assert_curated_complete()`
@@ -737,6 +757,10 @@ Policies :
 - `p_select` (SELECT) — USING (has_base_access(base_id) AND (deleted_at IS NULL))
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_diagnosis_client` — BEFORE INSERT/UPDATE → `guard_diagnosis_submission()`
 - `trg_patient_curated_complete` — BEFORE INSERT/UPDATE → `assert_curated_complete()`
 - `trg_patient_group_withdrawal` — BEFORE UPDATE → `guard_patient_group_withdrawal()`
@@ -809,6 +833,10 @@ Policies :
 - `profiles_update_self` (UPDATE) — USING ((id = auth.uid()) AND is_authenticated_session_current()) · WITH CHECK ((id = auth.uid()) AND is_authenticated_session_current())
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_guard_profile_role` — BEFORE UPDATE → `guard_profile_role()`
 
 ### quarantine_move_log · RLS activée
@@ -925,6 +953,12 @@ Triggers :
 
 Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seulement)*
 
+Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
+
 ### record_form_operation · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -1032,6 +1066,12 @@ Policies :
 Policies :
 - `tcg_read` (SELECT) — USING can_read_template(template_of_version(template_version_id))
 
+Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
+
 ### template_field · RLS activée
 
 | Colonne | Type | Nullable | Défaut |
@@ -1067,6 +1107,10 @@ Policies :
 - `tf_write` (ALL) — USING owns_template(template_of_version(template_version_id)) · WITH CHECK owns_template(template_of_version(template_version_id))
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_00_contains_any_lock` — BEFORE INSERT/UPDATE → `lock_contains_any_configuration()`
 - `trg_contains_any_revalidate` — AFTER UPDATE → `revalidate_contains_any_rules()`
 - `trg_repeatable_field_insert` — AFTER INSERT → `guard_repeatable_fields_insert_statement()`
@@ -1122,6 +1166,10 @@ Policies :
 - `ts_write` (ALL) — USING owns_template(template_of_version(template_version_id)) · WITH CHECK owns_template(template_of_version(template_version_id))
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_template_section_write` — BEFORE INSERT/UPDATE/DELETE → `guard_template_section_write()`
 - `trg_template_version_invariants_section_delete` — AFTER DELETE → `run_template_version_invariants_delete_statement()`
 - `trg_template_version_invariants_section_insert` — AFTER INSERT → `run_template_version_invariants_insert_statement()`
@@ -1152,6 +1200,10 @@ Policies :
 - `tv_update` (UPDATE) — USING owns_template(template_id) · WITH CHECK owns_template(template_id)
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_audit_template_publish` — AFTER UPDATE → `trg_audit_template_publish_fn()`
 - `trg_diagnosis_configuration` — BEFORE INSERT/UPDATE → `guard_diagnosis_configuration()`
 - `trg_template_version_state` — BEFORE INSERT/UPDATE → `guard_template_version_state()`
@@ -1253,6 +1305,10 @@ Policies :
 - `vr_write` (ALL) — USING owns_template(template_of_version(template_version_id)) · WITH CHECK owns_template(template_of_version(template_version_id))
 
 Triggers :
+- `export_revision_delete` — AFTER DELETE → `track_sources()`
+- `export_revision_insert` — AFTER INSERT → `track_sources()`
+- `export_revision_truncate` — AFTER  → `track_sources()`
+- `export_revision_update` — AFTER UPDATE → `track_sources()`
 - `trg_00_contains_any_lock` — BEFORE INSERT/UPDATE → `lock_contains_any_configuration()`
 - `trg_template_version_invariants_rule_delete` — AFTER DELETE → `run_template_version_invariants_delete_statement()`
 - `trg_template_version_invariants_rule_insert` — AFTER INSERT → `run_template_version_invariants_insert_statement()`
@@ -1394,6 +1450,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | delete_template_field | p_field_id uuid | DEFINER | plpgsql |
 | delete_work_draft | p_id uuid, p_expected_revision bigint, p_operation_id uuid | DEFINER | plpgsql |
 | detect_import_duplicates | p_base_id uuid, p_rows jsonb | DEFINER | plpgsql |
+| diagnosis_code_blocks | p_version_id uuid, p_scope text, p_field_key text, p_release jsonb, p_item jsonb | INVOKER | sql |
 | diagnosis_coverage | p_version_id uuid, p_scope text, p_data jsonb | INVOKER | sql |
 | diagnosis_coverage_in_context | p_version_id uuid, p_scope text, p_data jsonb, p_context jsonb | INVOKER | plpgsql |
 | diagnosis_followup | p_base_id uuid, p_scope text, p_version_id uuid, p_code text, p_limit integer, p_offset integer | INVOKER | plpgsql |
@@ -1417,6 +1474,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
 | expire_form_preparations | — | DEFINER | plpgsql |
 | export_incomplete_records | p_cohort_id uuid | INVOKER | sql |
+| export_source_revision | p_cohort_id uuid | INVOKER | sql |
 | export_template_definition | p_version_id uuid | INVOKER | plpgsql |
 | extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | finalize_base_purge | p_operation_id uuid, p_manifest_hash text, p_actor_id uuid | DEFINER | plpgsql |
@@ -1437,9 +1495,11 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_preparation_classify | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
 | form_preparation_error_json | p_code text, p_preparation_id uuid, p_operation_id uuid, p_retryable boolean | DEFINER | sql |
 | form_preparation_fingerprint | p_value jsonb | DEFINER | sql |
+| form_preparation_index_by_key | p_items jsonb, p_key text | INVOKER | sql |
 | form_preparation_json | p_row form_preparation | DEFINER | sql |
 | form_preparation_jsonb_array_subset | p_subset jsonb, p_superset jsonb | DEFINER | plpgsql |
 | form_preparation_normalize | p_payload jsonb | DEFINER | plpgsql |
+| form_preparation_normalize | p_payload jsonb, p_max_bytes integer | DEFINER | plpgsql |
 | form_preparation_operation_result | p_operation_id uuid, p_request_hash text | DEFINER | plpgsql |
 | form_preparation_order_array | p_value jsonb, p_key text | DEFINER | plpgsql |
 | form_preparation_rebind_allowed | p_base_id uuid, p_old_version_id uuid, p_new_version_id uuid | DEFINER | sql |
@@ -1541,6 +1601,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | is_saisisseur | — | DEFINER | sql |
 | is_strict_date_text | p_value text | INVOKER | plpgsql |
 | is_strict_datetime_text | p_value text | INVOKER | plpgsql |
+| is_strict_time_text | p_value text | INVOKER | sql |
 | is_system_admin | — | DEFINER | sql |
 | issue_base_purge_challenge | p_base_id uuid, p_operation_id uuid | DEFINER | plpgsql |
 | jsonb_matches | p_data jsonb, p_conds jsonb | INVOKER | plpgsql |
@@ -1615,6 +1676,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | recompute_encounter_age | — | DEFINER | plpgsql |
 | reconcile_mission_profile | p_user_id uuid | DEFINER | plpgsql |
 | record_client_error | p_occurred_at timestamp with time zone, p_name text, p_message text, p_stack text, p_component_stack text, p_context text, p_app_version text, p_severity text | DEFINER | plpgsql |
+| record_completion_summary | p_version uuid, p_scope text, p_data jsonb, p_encounter_type text, p_group_section_key text | INVOKER | plpgsql |
 | record_quarantine_move | p_entity text, p_entity_id uuid, p_run_id uuid, p_user_id uuid, p_base_id uuid, p_source_bucket text, p_source_path text, p_quarantine_bucket text, p_quarantine_path text, p_engine text, p_signature text, p_file_hash text, p_file_size bigint, p_detected_mime_type text, p_mime_type text, p_extra jsonb | DEFINER | plpgsql |
 | refresh_patient_inclusion_date | p_patient_id uuid | DEFINER | sql |
 | reject_cross_sectional_encounter | — | DEFINER | plpgsql |
@@ -1646,6 +1708,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | rule_calculated_field_label | p_version_id uuid, p_field_key text | INVOKER | sql |
 | rule_calculated_operand_message | p_problem text, p_label text | INVOKER | sql |
 | rule_cmp | a jsonb, b jsonb | INVOKER | plpgsql |
+| rule_contains_any_hit | a jsonb, b jsonb | INVOKER | plpgsql |
+| rule_contains_any_target_valid | b jsonb | INVOKER | plpgsql |
 | rule_holds | rule jsonb, data jsonb | INVOKER | sql |
 | rule_holds | rule jsonb, data jsonb, hidden text[] | INVOKER | plpgsql |
 | rule_operand_positions | p_rule jsonb | INVOKER | sql |

@@ -21,6 +21,7 @@ import { getTemplateFields } from '../../data/templates';
 import { fieldOptions } from '../../domain/fieldOptions';
 import { isMultipleTerminology, isTerminologyValue, type TemplateField, type TerminologyValue } from '../../data/types';
 import { isCalculatedField } from '../../domain/fieldFormula';
+import { isStrictTimeString } from '../../domain/validation';
 import type { MessageKey } from '../../i18n/messages';
 // L23 : le meme composant de recherche que la saisie, en mode multivalue -- aucun second
 // selecteur de diagnostic a maintenir, et la meme fenetre sur le referentiel.
@@ -57,7 +58,7 @@ function operatorsFor(field: TemplateField | undefined): FilterOp[] {
   // vrai pour tout le monde. Le rendre juste demande un operateur serveur, donc une migration.
   // En attendant, on n'offre rien plutot qu'un filtre qui ne peut que mentir.
   if (field.type === 'terminology') return NO_OPS;
-  if (['number', 'integer', 'date', 'datetime'].includes(field.type)) return ALL_OPS;
+  if (['number', 'integer', 'date', 'datetime', 'time'].includes(field.type)) return ALL_OPS;
   if (field.type === 'select' || field.type === 'boolean') return SIMPLE_OPS;
   return TEXT_OPS;
 }
@@ -215,6 +216,10 @@ export function CohortBuilder() {
       setError(t('cohort.value_date').replace('{field}', field.label));
       return;
     }
+    if (field.type === 'time' && toCheck.some((value) => !isStrictTimeString(value))) {
+      setError(t('cohort.value_time').replace('{field}', field.label));
+      return;
+    }
 
     const normalize = (value: string) => (field.type === 'number' ? value.replace(',', '.') : value);
     const condition: FilterCondition = {
@@ -368,7 +373,9 @@ export function CohortBuilder() {
       ? 'date'
       : selectedField?.type === 'datetime'
         ? 'datetime-local'
-        : 'text';
+        : selectedField?.type === 'time'
+          ? 'time'
+          : 'text';
     return (
       <input
         type={type}

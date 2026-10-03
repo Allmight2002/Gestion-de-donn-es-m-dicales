@@ -43,6 +43,13 @@ describe('resolution de la proposition', () => {
     expect(resolved).toBe('2026-08-14T09:05');
   });
 
+  test('le jeton heure rend l\'heure LOCALE HH:MM, sans date', () => {
+    const at = new Date(2026, 7, 14, 9, 5);
+    const resolved = resolveDefaultValue(field({ fieldKey: 'heure_admission', type: 'time', defaultValue: NOW_TOKEN }), at);
+    expect(resolved).toBe('09:05');
+    expect(resolveDefaultValue(field({ fieldKey: 'h', type: 'time', defaultValue: '08:00' }))).toBe('08:00');
+  });
+
   test('une date litterale est rendue telle quelle', () => {
     expect(resolveDefaultValue(field({ fieldKey: 'd', type: 'date', defaultValue: '2020-01-01' }))).toBe('2020-01-01');
   });

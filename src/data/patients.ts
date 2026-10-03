@@ -302,7 +302,8 @@ export interface FieldChange {
   changedAt: string;
 }
 
-/** B2 — un dossier NON FINALISE avec ses champs requis manquants (file « a completer »). */
+/** B2 — un dossier NON FINALISE avec un champ requis affiche manquant, ou moins de 75 % de
+ *  ses variables affichees documentees (file « a completer »). */
 export interface CompletionItem {
   kind: 'patient' | 'encounter';
   patientId: string;
@@ -312,6 +313,10 @@ export interface CompletionItem {
   encounterDate?: string;
   status: string;
   missing: string[];
+  /** Variables affichees (visibilite conditionnelle appliquee) documentees / affichees. Le
+   *  dossier entre aussi dans la file sous 75 %. Absentes d'un serveur anterieur. */
+  filledFields?: number;
+  displayedFields?: number;
 }
 
 export interface CompletionQueuePage {

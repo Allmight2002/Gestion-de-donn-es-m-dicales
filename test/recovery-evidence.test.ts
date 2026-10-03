@@ -100,3 +100,31 @@ describe('preuve de restauration et reprise', () => {
     ]));
   });
 });
+
+
+test('la preuve v2 exige comptes, droits, liens et parcours fichier avec temps mesures', () => {
+  const evidence = {
+    ...validEvidence(), format: 'meddata-recovery-evidence/v2',
+    source: { ...validEvidence().source, backupStartedAt: '2026-07-19T03:35:00.000Z' },
+    timing: { ...validEvidence().timing, incidentAt: '2026-07-19T03:40:00.000Z' },
+    restore: { ...validEvidence().restore, accountsExpected: 5, accountsRestored: 5,
+      documentLinksChecked: 107, storageOrphanCount: 0,
+      databaseContentsMatch: true, grantsMatch: true, policiesMatch: true },
+    journeys: { ...validEvidence().journeys, read: true, modify: true, fileOpen: true },
+  };
+  expect(validateRecoveryEvidence(evidence, { expectedCommit: commit, now })).toEqual([]);
+  evidence.restore.accountsRestored = 4;
+  evidence.restore.storageOrphanCount = 1;
+  evidence.restore.policiesMatch = false;
+  evidence.journeys.fileOpen = false;
+  evidence.timing.observedRtoSeconds = 1;
+  evidence.timing.observedRpoSeconds = 0;
+  expect(validateRecoveryEvidence(evidence, { expectedCommit: commit, now })).toEqual(expect.arrayContaining([
+    'Tous les comptes attendus ne sont pas restaures.',
+    'La restauration contient des orphelins Storage.',
+    'restore.policiesMatch doit etre vrai.',
+    'journeys.fileOpen doit etre vrai.',
+    'Le RTO doit correspondre a la fenetre de reprise mesuree.',
+    'Le RPO doit mesurer la perte potentielle depuis le debut du backup.',
+  ]));
+});

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useI18n } from '../../i18n/useI18n';
 import { ValueInput } from './ValueInput';
-import type { TemplateField } from '../../data/types';
+import { isMultipleTerminology, type TemplateField } from '../../data/types';
 import { Checkbox } from '../../components/Checkbox';
 
 // F5 — rendu couple d'un champ a liste controlee et de son champ compagnon « valeur proposee ».
@@ -9,6 +9,10 @@ import { Checkbox } from '../../components/Checkbox';
 // Choisir « Autre » n'ecrit RIEN dans le champ a liste : la colonne analysable ne contient que
 // des valeurs de la liste. Le texte saisi va dans le champ compagnon, et la fiche part dans la
 // file de completion existante tant que le champ source reste vide.
+//
+// Champ a valeurs MULTIPLES (liste a choix multiples, diagnostics multiples) : la proposition
+// COMPLETE les valeurs cochees au lieu de les remplacer. Cocher « Autre » ne vide donc pas la
+// liste, et cocher une valeur ne retire pas la proposition : les deux sont enregistrees.
 export function ChoiceWithProposal({
   field,
   proposal,
@@ -27,6 +31,7 @@ export function ChoiceWithProposal({
 }) {
   const { t } = useI18n();
   const isTerminology = field.type === 'terminology';
+  const isMultiple = field.type === 'multiselect' || isMultipleTerminology(field);
   const hasProposal = typeof proposalValue === 'string' && proposalValue.trim() !== '';
   // Revele des qu'une proposition existe (relecture) ou que l'utilisateur vient de la demander.
   const [asked, setAsked] = useState(false);
@@ -35,6 +40,8 @@ export function ChoiceWithProposal({
   function toggleProposal(next: boolean) {
     setAsked(next);
     if (next) {
+      // Choix multiple : la proposition s'ajoute aux valeurs cochees, qui sont conservees.
+      if (isMultiple) return;
       // La valeur hors liste ne doit jamais occuper le champ source, pas meme a null :
       // il est retire du payload avant l'appel serveur.
       onRemove(field.fieldKey);
@@ -47,7 +54,8 @@ export function ChoiceWithProposal({
     const selected = Array.isArray(next) ? next.length > 0 : next !== null && next !== undefined && next !== '';
     if (selected) {
       onChange(field.fieldKey, next);
-      // Les deux valeurs sont mutuellement exclusives : une ancienne proposition ne doit
+      if (isMultiple) return;
+      // Valeur unique : les deux valeurs sont mutuellement exclusives : une ancienne proposition ne doit
       // pas subsister silencieusement apres le choix d'une valeur controlee.
       setAsked(false);
       onRemove(proposal.fieldKey);

@@ -90,6 +90,16 @@ export function FieldInput({
           onChange={(e) => onChange(e.target.value || null)}
         />
       );
+    case 'time':
+      return (
+        <input
+          type="time"
+          className={cls}
+          aria-label={field.label}
+          value={(value as string) ?? ''}
+          onChange={(e) => onChange(e.target.value || null)}
+        />
+      );
     case 'terminology':
       return (
         <TerminologyInput

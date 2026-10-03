@@ -38,7 +38,7 @@ interface Loaded {
   sections: TemplateSection[];
 }
 
-const FIELD_TYPES: TemplateField['type'][] = ['text', 'integer', 'number', 'date', 'datetime', 'boolean', 'select', 'multiselect', 'terminology'];
+const FIELD_TYPES: TemplateField['type'][] = ['text', 'integer', 'number', 'date', 'datetime', 'time', 'boolean', 'select', 'multiselect', 'terminology'];
 const FIELD_SCOPES: TemplateField['scope'][] = ['patient', 'encounter'];
 
 /** Comparaison de consultation : accents et casse ignores, nombres compares comme des nombres. */
