@@ -338,7 +338,8 @@ Deno.test('L70 point 23 : projeter le bloc « lesions » produit le fichier des 
   const projete = projectFields(mergeExportFields(CHAMPS), { mode: 'selected', blockKeys: ['lesions'] });
   const table = buildEncounterExport(RENCONTRES, projete, 'analysis', mergeExportFields(CHAMPS));
 
-  // Les colonnes attendues : la meta — discriminant compris — le tronc commun, et le bloc choisi.
+  // Les colonnes attendues : la meta — discriminant compris — les variables permanentes et
+  // le tronc commun hors bloc, et le bloc choisi.
   assertEquals(table.columns, [
     'patient_code',
     'encounter_id',
@@ -347,6 +348,7 @@ Deno.test('L70 point 23 : projeter le bloc « lesions » produit le fichier des 
     'age_value',
     'age_unit',
     'group_section_key',
+    columnId(SEXE),
     columnId(AGE),
     columnId(LESION_GRADE),
     columnId(LESION_NIVEAU),
@@ -356,6 +358,33 @@ Deno.test('L70 point 23 : projeter le bloc « lesions » produit le fichier des 
   assertEquals(table.rows.length, 5);
   assertEquals(table.rows.filter((r) => r.group_section_key === 'lesions').length, 2);
   assertNoIdentity(table.columns);
+});
+
+Deno.test('une ligne par rencontre repete les variables permanentes de son patient', () => {
+  const table = buildEncounterExport(RENCONTRES, CHAMPS, 'complete', undefined, undefined, PATIENTS);
+  // Juste apres la meta, avant les variables de rencontre, comme en une ligne par patient.
+  assertEquals(table.columns.indexOf(columnId(SEXE)), table.columns.indexOf('group_section_key') + 1);
+  const p1 = table.rows.filter((r) => r.patient_code === 'P0001');
+  assertEquals(p1.length > 1, true);
+  for (const row of p1) assertEquals(row[columnId(SEXE)], 'F');
+  // Sans fiche patient connue, la case reste vide : rien n'est invente.
+  const sansFiche = buildEncounterExport(RENCONTRES, CHAMPS);
+  assertEquals(sansFiche.rows.every((r) => r[columnId(SEXE)] === ''), true);
+});
+
+Deno.test('une ligne par rencontre garde le patient sans rencontre, colonnes de rencontre vides', () => {
+  // P0002 n'a aucune rencontre ordinaire ni occurrence dans ce jeu : il ne doit pas disparaitre.
+  const rencontres = RENCONTRES.filter((e) => e.patientCode !== 'P0002');
+  const table = buildEncounterExport(rencontres, CHAMPS, 'complete', undefined, undefined, PATIENTS);
+  const p2 = table.rows.filter((r) => r.patient_code === 'P0002');
+  assertEquals(p2.length, 1);
+  assertEquals(p2[0][columnId(SEXE)], 'M');
+  assertEquals(p2[0].encounter_id, '');
+  assertEquals(p2[0].encounter_date, '');
+  assertEquals(p2[0].age_value, '');
+  assertEquals(p2[0][columnId(POIDS)], '');
+  // Les patients qui ont des rencontres ne recoivent PAS de ligne patient en plus.
+  assertEquals(table.rows.filter((r) => r.patient_code === 'P0001' && r.encounter_id === '').length, 0);
 });
 
 Deno.test('L70 point 23 : la projection se combine au comptage sans rien ajouter', () => {

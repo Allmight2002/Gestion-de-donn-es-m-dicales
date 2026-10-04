@@ -1218,6 +1218,7 @@ export const messages = {
     'export.shape': 'Forme du fichier',
     'export.shape_cross_sectional': 'Une ligne par participant',
     'export.shape_event_registry': 'Une ligne par événement',
+    'export.shape_longitudinal': 'Une ligne par rencontre, variables du patient répétées',
     'export.shape_hint': 'Déterminée par le modèle d’observation de la base.',
     'export.format': 'Format',
     'export.profile': 'Profil de données',

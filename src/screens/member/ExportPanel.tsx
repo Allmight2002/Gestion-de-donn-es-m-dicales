@@ -5,10 +5,11 @@ import { useI18n } from '../../i18n/useI18n';
 import { useAuditRepository, useBaseRepository, useCohortRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
 import type { EncounterScopeOption, ExportLogItem, ExportProfile } from '../../data/exports';
 import type { ObservationModel } from '../../data/bases';
+import type { MessageKey } from '../../i18n/messages';
 import type { TemplateSection } from '../../data/types';
 import { formatDateTime } from '../../lib/formatDate';
 import { sectionLabel } from '../../domain/templateSections';
-import type { AggregationRule, SectionProjectionMode } from '../../domain/export';
+import type { SectionProjectionMode } from '../../domain/export';
 import { HelpTip } from '../../components/HelpTip';
 
 function downloadUrl(url: string, filename: string) {
@@ -25,8 +26,9 @@ function downloadUrl(url: string, filename: string) {
 
 // Export d'une cohorte FIGEE (cahier §9.2/§9.3). L'ecran ne pose que les questions dont la
 // reponse n'est PAS deja connue : la forme des lignes decoule du modele d'observation de la
-// base, verrouille des la premiere saisie, et seul le suivi longitudinal laisse un choix
-// (une ligne par patient ou par rencontre). La generation, le hash et la conservation du
+// base, verrouille des la premiere saisie : une ligne par participant en transversal, une
+// ligne par rencontre (ou evenement) sinon, les variables du patient repetees sur chacune.
+// La generation, le hash et la conservation du
 // fichier sont executes cote serveur par l'Edge Function `generate-export`.
 
 // La cohorte dit deja QUELLES rencontres en font partie (`cohort_encounter_member`, rempli au
@@ -46,12 +48,16 @@ function FieldHint({ id, children }: { id: string; children: ReactNode }) {
   return <span id={id} className="mt-0.5 hidden text-xs text-slate-500 sm:block">{children}</span>;
 }
 
-/** Forme des lignes imposee par le modele d'observation ; `null` = la question reste posee. */
-function rowShapeOf(model: ObservationModel): 'patient' | 'encounter' | null {
-  if (model === 'cross_sectional') return 'patient';
-  if (model === 'event_registry') return 'encounter';
-  return null;
+/** Forme des lignes imposee par le modele d'observation : ce n'est jamais une question. */
+function rowShapeOf(model: ObservationModel): 'patient' | 'encounter' {
+  return model === 'cross_sectional' ? 'patient' : 'encounter';
 }
+
+const SHAPE_LABEL_KEY: Record<ObservationModel, MessageKey> = {
+  cross_sectional: 'export.shape_cross_sectional',
+  longitudinal: 'export.shape_longitudinal',
+  event_registry: 'export.shape_event_registry',
+};
 
 export function ExportPanel() {
   const { id: baseId, cohortId } = useParams();
@@ -67,9 +73,6 @@ export function ExportPanel() {
   const [tvId, setTvId] = useState<string | null>(null);
   const [history, setHistory] = useState<ExportLogItem[]>([]);
   const [observationModel, setObservationModel] = useState<ObservationModel>('longitudinal');
-  // Choix offert au seul suivi longitudinal ; ailleurs la forme des lignes est deduite.
-  const [chosenShape, setChosenShape] = useState<'encounter' | 'patient'>('encounter');
-  const [rule, setRule] = useState<AggregationRule>('last');
   const [format, setFormat] = useState<'csv' | 'xlsx'>('csv');
   const [profile, setProfile] = useState<ExportProfile>('analysis');
   // L53 : projection de COLONNES par bloc. Les blocs proposes sont les sections RACINES de la
@@ -87,8 +90,7 @@ export function ExportPanel() {
   const [downloadError, setDownloadError] = useState<{ id: string; message: string } | null>(null);
 
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
-  const imposedShape = rowShapeOf(observationModel);
-  const mode = imposedShape ?? chosenShape;
+  const mode = rowShapeOf(observationModel);
   const projectionIncomplete = projectionMode === 'selected' && selectedBlocks.length === 0;
 
   const load = useCallback(async () => {
@@ -149,7 +151,8 @@ export function ExportPanel() {
         profile,
         options: {
           mode,
-          rule,
+          // Sans effet en une ligne par rencontre ; en transversal, une seule saisie existe.
+          rule: 'last',
           scope: ENCOUNTER_SCOPE,
           // L53 : `all` est le defaut et reproduit exactement le comportement anterieur.
           sectionProjection: projectionMode === 'selected'
@@ -248,45 +251,20 @@ export function ExportPanel() {
       {/* Audit UI mobile, lot 0 — une colonne sur telephone : a deux colonnes sur 360 px, le
           profil etait tronque (« Analyse — pr »). Deux colonnes des `sm`, comme avant. */}
       <div className="card grid grid-cols-1 gap-4 p-4 text-sm sm:grid-cols-2">
-        {imposedShape ? (
-          // Le modele d'observation est verrouille des la premiere saisie : la forme des
-          // lignes en decoule. On l'ANNONCE au lieu de la redemander -- l'utilisateur doit
-          // savoir ce qu'il va recevoir, sans avoir a le choisir. Audit UI mobile, lot 4
-          // (5.8-A) : une phrase, pas un champ, puisque ce n'est pas un choix.
-          <div className="sm:col-span-2">
-            <p className="flex items-center gap-1 text-slate-700">
-              <span>
-                {t('export.shape')} :{' '}
-                <span className="font-medium text-slate-900">
-                  {imposedShape === 'patient' ? t('export.shape_cross_sectional') : t('export.shape_event_registry')}
-                </span>
-              </span>
-              <FieldHelp label={t('export.shape')}>{t('export.shape_hint')}</FieldHelp>
-            </p>
-            <FieldHint id={`${uid}-shape-hint`}>{t('export.shape_hint')}</FieldHint>
-          </div>
-        ) : (
-          <label className="flex flex-col">
-            <span className="text-slate-700">{t('export.mode')}</span>
-            <select
-              className="input mt-1"
-              value={chosenShape}
-              onChange={(e) => setChosenShape(e.target.value as 'encounter' | 'patient')}
-            >
-              <option value="encounter">{t('export.mode_encounter')}</option>
-              <option value="patient">{t('export.mode_patient')}</option>
-            </select>
-          </label>
-        )}
-        {!imposedShape && mode === 'patient' && (
-          <label className="flex flex-col">
-            <span className="text-slate-700">{t('export.rule')}</span>
-            <select className="input mt-1" value={rule} onChange={(e) => setRule(e.target.value as AggregationRule)}>
-              <option value="first">{t('export.rule_first')}</option>
-              <option value="last">{t('export.rule_last')}</option>
-            </select>
-          </label>
-        )}
+        {/* Le modele d'observation est verrouille des la premiere saisie : la forme des
+            lignes en decoule. On l'ANNONCE au lieu de la redemander -- l'utilisateur doit
+            savoir ce qu'il va recevoir, sans avoir a le choisir. Audit UI mobile, lot 4
+            (5.8-A) : une phrase, pas un champ, puisque ce n'est pas un choix. */}
+        <div className="sm:col-span-2">
+          <p className="flex items-center gap-1 text-slate-700">
+            <span>
+              {t('export.shape')} :{' '}
+              <span className="font-medium text-slate-900">{t(SHAPE_LABEL_KEY[observationModel])}</span>
+            </span>
+            <FieldHelp label={t('export.shape')}>{t('export.shape_hint')}</FieldHelp>
+          </p>
+          <FieldHint id={`${uid}-shape-hint`}>{t('export.shape_hint')}</FieldHint>
+        </div>
         <label className="flex flex-col">
           <span className="text-slate-700">{t('export.format')}</span>
           <select className="input mt-1" value={format} onChange={(e) => setFormat(e.target.value as 'csv' | 'xlsx')}>

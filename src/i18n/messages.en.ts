@@ -1212,6 +1212,7 @@ export const messages = {
     'export.shape': 'File shape',
     'export.shape_cross_sectional': 'One row per participant',
     'export.shape_event_registry': 'One row per event',
+    'export.shape_longitudinal': 'One row per encounter, patient variables repeated',
     'export.shape_hint': 'Set by the observation model of this database.',
     'export.format': 'Format',
     'export.profile': 'Data profile',

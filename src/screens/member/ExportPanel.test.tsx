@@ -131,10 +131,15 @@ describe('ExportPanel', () => {
     expect(recordExport.mock.calls[0][0].options).toMatchObject({ mode: 'encounter' });
   });
 
-  test('suivi longitudinal : la question reste posee, elle a un sens', async () => {
-    await exportWithModel('longitudinal');
-    expect(screen.getByRole('combobox', { name: /type d'export/i })).toBeTruthy();
-    expect(screen.queryByText('Une ligne par participant')).toBeNull();
+  test('suivi repete : une ligne par rencontre, sans question', async () => {
+    const recordExport = await exportWithModel('longitudinal');
+    await screen.findByText('Une ligne par rencontre, variables du patient répétées');
+    expect(screen.queryByRole('combobox', { name: /type d'export/i })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: /agrégation/i })).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+    await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+    expect(recordExport.mock.calls[0][0].options).toMatchObject({ mode: 'encounter' });
   });
 
   test('l aide du profil passe derriere un ⓘ et decrit toujours le champ', async () => {
