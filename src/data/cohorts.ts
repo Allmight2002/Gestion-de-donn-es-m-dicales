@@ -36,6 +36,12 @@ export interface CohortRepository {
   preview(baseId: string, filter: FilterDefinition, validatedOnly?: boolean): Promise<{ patientCount: number; encounterCount: number }>;
   createDynamic(baseId: string, name: string, filter: FilterDefinition, validatedOnly?: boolean): Promise<{ id: string }>;
   createSnapshot(baseId: string, name: string, filter: FilterDefinition, validatedOnly?: boolean): Promise<{ id: string }>;
+  /**
+   * Fige les patients portant l'un des codes diagnostiques (portee patient ou l'une de leurs
+   * rencontres), avec TOUTES leurs rencontres. La variable lue est celle de la configuration
+   * diagnostique de la version de chaque fiche, cote serveur.
+   */
+  createSnapshotByDiagnosis(baseId: string, name: string, codes: string[], validatedOnly?: boolean): Promise<{ id: string }>;
   deleteCohort(cohortId: string): Promise<void>;
 }
 
@@ -46,7 +52,7 @@ export function makeCohortRepository(client: SupabaseClient | null): CohortRepos
     const fail = async (): Promise<never> => {
       throw new Error(NOT_CONFIGURED);
     };
-    return { listCohorts: fail, preview: fail, createDynamic: fail, createSnapshot: fail, deleteCohort: fail };
+    return { listCohorts: fail, preview: fail, createDynamic: fail, createSnapshot: fail, createSnapshotByDiagnosis: fail, deleteCohort: fail };
   }
 
   return {
@@ -90,6 +96,15 @@ export function makeCohortRepository(client: SupabaseClient | null): CohortRepos
     async createSnapshot(baseId, name, filter, validatedOnly = true) {
       const { data, error } = await client.rpc('create_cohort_snapshot', {
         p_base_id: baseId, p_name: name, p_filter: filter, p_validated_only: validatedOnly,
+      });
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as { id: string };
+      return { id: row.id };
+    },
+
+    async createSnapshotByDiagnosis(baseId, name, codes, validatedOnly = false) {
+      const { data, error } = await client.rpc('create_cohort_snapshot_by_diagnosis', {
+        p_base_id: baseId, p_name: name, p_codes: codes, p_validated_only: validatedOnly,
       });
       if (error) throw error;
       const row = (Array.isArray(data) ? data[0] : data) as { id: string };
