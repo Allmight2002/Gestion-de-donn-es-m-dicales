@@ -69,6 +69,8 @@ function entryForms(forms: EntryForm[] = [quick, discharge], over: Partial<Entry
     create: vi.fn(async (_baseId: string, input: EntryFormInput) => ({ ...quick, id: 'f9', ...input })),
     update: vi.fn(async (id: string, _v: number, input: EntryFormInput) => ({ ...quick, id, ...input })),
     remove: vi.fn(async () => {}),
+    getDefault: vi.fn(async () => null),
+    setDefault: vi.fn(async () => {}),
     ...over,
   };
 }
@@ -171,6 +173,37 @@ describe('saisie rapide : création', () => {
     expect(await screen.findByText(/n’existe plus/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Formulaire')).toHaveValue('');
   });
+
+  test('« Nouveau patient » s’ouvre sur le formulaire par défaut choisi par le propriétaire', async () => {
+    const { patients: repo } = patients();
+    renderAt('/bases/b1/patients/new/manual', { patients: repo, entryForms: entryForms([quick, discharge], { getDefault: vi.fn(async () => 'f2') }) });
+    expect(await screen.findByLabelText('Formulaire')).toHaveValue('f2');
+    expect(screen.getByLabelText(/^Issue du séjour/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Glasgow/)).not.toBeInTheDocument();
+  });
+
+  test('?form= et ?form=full l’emportent sur le formulaire par défaut', async () => {
+    const { patients: repo } = patients();
+    const repoForms = () => entryForms([quick, discharge], { getDefault: vi.fn(async () => 'f2') });
+    const first = renderAt('/bases/b1/patients/new/manual?form=f1', { patients: repo, entryForms: repoForms() });
+    expect(await screen.findByLabelText('Formulaire')).toHaveValue('f1');
+    first.unmount();
+    renderAt('/bases/b1/patients/new/manual?form=full', { patients: repo, entryForms: repoForms() });
+    expect(await screen.findByLabelText('Formulaire')).toHaveValue('');
+    expect(screen.getByLabelText(/Glasgow/)).toBeInTheDocument();
+    expect(screen.queryByText(/n’existe plus/i)).toBeNull();
+  });
+
+  test('un défaut illisible ou supprimé laisse le formulaire complet, sans alerte', async () => {
+    const { patients: repo } = patients();
+    const first = renderAt('/bases/b1/patients/new/manual', { patients: repo, entryForms: entryForms([quick], { getDefault: vi.fn(async () => 'disparu') }) });
+    expect(await screen.findByLabelText('Formulaire')).toHaveValue('');
+    first.unmount();
+    renderAt('/bases/b1/patients/new/manual', { patients: repo, entryForms: entryForms([quick], { getDefault: vi.fn(async () => { throw new Error('réseau'); }) }) });
+    expect(await screen.findByLabelText('Formulaire')).toHaveValue('');
+    expect(screen.queryByRole('status', { name: /indisponibles/i })).toBeNull();
+    expect(screen.queryByText(/indisponibles/i)).toBeNull();
+  });
 });
 
 describe('formulaire court : complétion d’une fiche existante', () => {
@@ -269,6 +302,27 @@ describe('gestion des formulaires de saisie', () => {
     expect(dialog).toHaveTextContent(/données saisies restent intactes/i);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }));
     await waitFor(() => expect(repo.remove).toHaveBeenCalledWith('f1', 1));
+  });
+
+  test('le propriétaire choisit le formulaire ouvert par « Nouveau patient »', async () => {
+    const repo = entryForms([quick, discharge], { getDefault: vi.fn(async () => 'f1') });
+    renderAt('/bases/b1/formulaires', { entryForms: repo });
+    const select = await screen.findByLabelText('Ouvert par « Nouveau patient »');
+    expect(select).toHaveValue('f1');
+    expect(screen.getByText('Par défaut')).toBeInTheDocument();
+    await userEvent.selectOptions(select, 'f2');
+    await waitFor(() => expect(repo.setDefault).toHaveBeenCalledWith('b1', 'f2'));
+    expect(select).toHaveValue('f2');
+    await userEvent.selectOptions(select, '');
+    await waitFor(() => expect(repo.setDefault).toHaveBeenLastCalledWith('b1', null));
+  });
+
+  test('un défaut visant un formulaire supprimé entre-temps est refusé sans rien écrire', async () => {
+    const repo = entryForms([quick, discharge], { setDefault: vi.fn(async () => { throw new EntryFormConflictError(); }) });
+    renderAt('/bases/b1/formulaires', { entryForms: repo });
+    await userEvent.selectOptions(await screen.findByLabelText('Ouvert par « Nouveau patient »'), 'f2');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/a changé entre-temps/i);
+    expect(screen.getByLabelText('Ouvert par « Nouveau patient »')).toHaveValue('');
   });
 
   // Revue post-optimisation, lot C2 : la page suit les criteres de l'audit UI mobile.

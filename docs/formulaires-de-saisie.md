@@ -1,7 +1,8 @@
 # Formulaires de saisie (formulaires courts)
 
 🟢 Document vivant — décrit le comportement implémenté par la migration
-`20261001100000_base_entry_forms.sql` et les écrans associés.
+`20261001100000_base_entry_forms.sql`, le formulaire par défaut par
+`20261004120000_base_default_entry_form.sql`, et les écrans associés.
 
 ## Besoin
 
@@ -45,10 +46,27 @@ dossier**, sans dupliquer la base ni synchroniser deux enregistrements.
 Un formulaire court garde le **statut** du dossier (le passer « complet » exigerait la fiche
 entière). Le passage à « complet » ou « vérifié » se fait depuis le formulaire complet.
 
+## Formulaire par défaut
+
+Une personne peu familière de l'application ne remarque pas toujours qu'il existe plusieurs
+formulaires. Le propriétaire choisit donc le formulaire **ouvert par « Nouveau patient »**
+(sélecteur en tête de la page Formulaires courts) : un formulaire court ou, par défaut, le
+formulaire complet.
+
+- Tous les boutons « Nouveau patient » ouvrent ce formulaire ; le sélecteur en haut de l'écran
+  permet toujours d'en changer sans perdre la saisie.
+- « Nouveau patient avec… » propose alors le **formulaire complet** et les autres formulaires
+  courts (`?form=full` ouvre explicitement le formulaire complet).
+- Un lien `?form=<id>` l'emporte sur le défaut ; le défaut ne s'applique pas à « Compléter avec… »
+  ni à la modification d'une fiche.
+- Supprimer le formulaire par défaut ramène « Nouveau patient » au formulaire complet. Un défaut
+  illisible (réseau) ou disparu laisse le formulaire complet, sans alerte.
+
 ## Qui fait quoi
 
 - **Propriétaire de la base** : crée, nomme, compose, modifie et supprime les
-  formulaires (Paramètres → Formulaires courts, route `/bases/:id/formulaires`).
+  formulaires, et choisit celui qu'ouvre « Nouveau patient » (Paramètres → Formulaires courts,
+  route `/bases/:id/formulaires`).
 - **Membres de la base** : choisissent un formulaire à la création (« Nouveau patient avec… »,
   dans « ⋯ » sur téléphone, ou le sélecteur en haut du formulaire) ou pour compléter une fiche
   (« Compléter avec… », dans « ⋯ » de la barre haute sur téléphone). Le sélecteur occupe la même
@@ -75,11 +93,23 @@ entière). Le passage à « complet » ou « vérifié » se fait depuis le form
   dans l'éditeur, sans jamais afficher sa clé technique ; elle est retirée du formulaire à son
   prochain enregistrement.
 
+## Sécurité et intégrité (table `base_entry_form_default`)
+
+- Une ligne au plus par base (clé primaire `base_id`) : changer le défaut est une écriture
+  unique, sans bascule en deux temps, et n'incrémente pas la `row_version` des formulaires.
+- Clé étrangère composite `(base_id, form_id)` vers `base_entry_form (base_id, id)` : le défaut
+  appartient forcément à la base ; `on delete cascade` le retire avec son formulaire. Un défaut
+  visant un formulaire supprimé entre-temps est refusé (violation de clé étrangère) et l'écran
+  recharge la liste.
+- RLS identique aux formulaires : lecture pour les membres, écriture pour le propriétaire.
+- Trigger `guard_base_entry_form_default` (INVOKER, non exécutable comme RPC) : auteur et date
+  non forgeables.
+
 ## Code
 
 | Élément | Emplacement |
 |---|---|
-| Migration | `supabase/migrations/20261001100000_base_entry_forms.sql` |
+| Migrations | `supabase/migrations/20261001100000_base_entry_forms.sql`, `20261004120000_base_default_entry_form.sql` |
 | Dépôt | `src/data/entryForms.ts` |
 | Projection d'un formulaire (ordre, dépendances, requis) | `src/domain/entryForms.ts` |
 | Gestion | `src/screens/member/BaseEntryForms.tsx` |

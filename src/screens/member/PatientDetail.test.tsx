@@ -979,6 +979,7 @@ describe('PatientDetail — fiche allégée (audit UI mobile, lot 2)', () => {
     const draft = { ...patientView, validationStatus: 'draft' as const };
     const entryForms = {
       async list() { return [{ id: 'f1', baseId: 'b1', name: 'Sortie', fieldKeys: ['sexe'], requiredKeys: [], rowVersion: 1, updatedAt: '' }]; },
+      async getDefault() { return null; },
     } as unknown as EntryFormRepository;
     render(
       <I18nProvider>

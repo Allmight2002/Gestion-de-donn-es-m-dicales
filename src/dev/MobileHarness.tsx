@@ -201,6 +201,7 @@ let entryFormRows: EntryForm[] = [
   { id: 'ef1', baseId: 'b1', name: 'Admission (fictif)', fieldKeys: ['sexe', 'localite', 'mecanisme', 'pci'], requiredKeys: ['sexe'], rowVersion: 1, updatedAt: at(26) },
   { id: 'ef2', baseId: 'b1', name: 'Sortie (fictif)', fieldKeys: ['amnesie', 'profession', 'ancienne_variable'], requiredKeys: [], rowVersion: 1, updatedAt: at(27) },
 ];
+let defaultEntryFormId: string | null = null;
 const entryForms = strict<EntryFormRepository>('entryForms', {
   async list(baseId: string) { return entryFormRows.filter((form) => form.baseId === baseId); },
   async create(baseId: string, input: EntryFormInput) {
@@ -212,7 +213,12 @@ const entryForms = strict<EntryFormRepository>('entryForms', {
     entryFormRows = entryFormRows.map((form) => (form.id === id ? { ...form, ...input, rowVersion: form.rowVersion + 1 } : form));
     return entryFormRows.find((form) => form.id === id)!;
   },
-  async remove(id: string) { entryFormRows = entryFormRows.filter((form) => form.id !== id); },
+  async remove(id: string) {
+    entryFormRows = entryFormRows.filter((form) => form.id !== id);
+    if (defaultEntryFormId === id) defaultEntryFormId = null;
+  },
+  async getDefault() { return defaultEntryFormId; },
+  async setDefault(_baseId: string, formId: string | null) { defaultEntryFormId = formId; },
 });
 
 // Revue post-optimisation (C4) : nomenclature CIM-11 FICTIVE. Le codage assiste repond apres un
