@@ -408,6 +408,53 @@ describe('ExportPanel', () => {
         sectionProjection: { mode: 'selected', blockKeys: ['tuberculose'] },
       });
     });
+
+    async function renderBaseExport() {
+      const createSnapshot = vi.fn(async () => ({ id: 'tous' }));
+      const createSnapshotByDiagnosis = vi.fn(async () => ({ id: 'par-categorie' }));
+      const recordExport = vi.fn(async (_i: RecordExportInput): Promise<ExportLogItem> => ({
+        id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 2, fileHash: 'deadbeef', storedFilePath: null,
+      }));
+      const exportsRepo = { recordExport, async listBaseExports() { return []; } } as unknown as ExportRepository;
+      const cohortsRepo = { createSnapshot, createSnapshotByDiagnosis } as unknown as CohortRepository;
+      render(
+        <I18nProvider>
+          <RepositoryProvider bases={baseRepo} templates={repo} exports={exportsRepo} cohorts={cohortsRepo}>
+            <MemoryRouter initialEntries={['/bases/b1/export']}>
+              <Routes>
+                <Route path="/bases/:id/export" element={<ExportPanel />} />
+              </Routes>
+            </MemoryRouter>
+          </RepositoryProvider>
+        </I18nProvider>,
+      );
+      await screen.findByRole('heading', { name: 'Exporter les données' });
+      await userEvent.selectOptions(await screen.findByRole('combobox', { name: /blocs à exporter/i }), 'selected');
+      await userEvent.click(await screen.findByRole('checkbox', { name: /Tuberculose pulmonaire/ }));
+      return { createSnapshot, createSnapshotByDiagnosis, recordExport };
+    }
+
+    test('par defaut, tous les patients partent, meme sans categorie', async () => {
+      const { createSnapshot, createSnapshotByDiagnosis, recordExport } = await renderBaseExport();
+      expect(screen.getByRole('radio', { name: /Tous les patients/ })).toBeChecked();
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+      expect(createSnapshot).toHaveBeenCalledWith('b1', expect.stringContaining('Toutes les données'), { conditions: [] }, false);
+      expect(createSnapshotByDiagnosis).not.toHaveBeenCalled();
+      expect(recordExport.mock.calls[0][0].cohortId).toBe('tous');
+    });
+
+    test('seulement les patients des categories cochees : population figee par diagnostic', async () => {
+      const { createSnapshot, createSnapshotByDiagnosis, recordExport } = await renderBaseExport();
+      await userEvent.click(screen.getByRole('radio', { name: /Seulement les patients des catégories cochées/ }));
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+      expect(createSnapshotByDiagnosis).toHaveBeenCalledWith(
+        'b1', expect.stringContaining('Tuberculose pulmonaire'), ['TB'], false,
+      );
+      expect(createSnapshot).not.toHaveBeenCalled();
+      expect(recordExport.mock.calls[0][0].cohortId).toBe('par-categorie');
+    });
   });
 
   // UX-15 — etat d'execution, echec pres de l'action, bilan lisible de l'historique.

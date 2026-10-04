@@ -96,6 +96,10 @@ export function ExportPanel() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [categoryQuery, setCategoryQuery] = useState('');
   const [blockQuery, setBlockQuery] = useState('');
+  // Population : par defaut TOUS les patients, y compris ceux sans categorie diagnostique.
+  // « categories » ne garde que les patients portant l'une des categories cochees, avec
+  // toutes leurs rencontres. Sans objet pour une cohorte deja figee.
+  const [population, setPopulation] = useState<'all' | 'categories'>('all');
   const [busy, setBusy] = useState(false);
   const [downloadId, setDownloadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +119,8 @@ export function ExportPanel() {
   // Un bloc coche puis sorti du filtre n'est plus affiche : il ne part donc pas non plus.
   const exportedBlocks = categoryBlocks ? selectedBlocks.filter((key) => categoryBlocks.has(key)) : selectedBlocks;
   const projectionIncomplete = projectionMode === 'selected' && exportedBlocks.length === 0;
+  const populationByCategory = !cohortId && projectionMode === 'selected'
+    && population === 'categories' && selectedCategories.length > 0;
   const visibleCategories = categories.filter((c) => matches(categoryQuery, c.label, c.code));
   const visibleBlocks = blocks.filter((block) =>
     (!categoryBlocks || categoryBlocks.has(block.sectionKey))
@@ -199,12 +205,22 @@ export function ExportPanel() {
       // exportee. Le figeage ne disparait pas -- il cesse d'etre une demarche. Le fichier
       // conserve reste rattache a une population datee, donc reproductible ; l'ecran des
       // cohortes (option avancee) montre ces instantanes sous leur date.
-      const exportedCohortId = cohortId ?? (await cohorts.createSnapshot(
-        baseId,
-        t('export.auto_cohort_name').replace('{date}', formatDateTime(new Date().toISOString(), lang)),
-        { conditions: [] },
-        false,
-      )).id;
+      const now = formatDateTime(new Date().toISOString(), lang);
+      const exportedCohortId = cohortId ?? (populationByCategory
+        ? await cohorts.createSnapshotByDiagnosis(
+          baseId,
+          t('export.auto_cohort_name_categories')
+            .replace('{categories}', categories.filter((c) => selectedCategories.includes(c.code)).map((c) => c.label).join(', '))
+            .replace('{date}', now),
+          selectedCategories,
+          false,
+        )
+        : await cohorts.createSnapshot(
+          baseId,
+          t('export.auto_cohort_name').replace('{date}', now),
+          { conditions: [] },
+          false,
+        )).id;
       const item = await exportsRepo.recordExport({
         cohortId: exportedCohortId, baseId, templateVersions: tvId ? [tvId] : [], format,
         profile,
@@ -398,6 +414,19 @@ export function ExportPanel() {
                   </li>
                 ))}
               </ul>
+              {!cohortId && selectedCategories.length > 0 && (
+                <div role="radiogroup" aria-label={t('export.population')} className="space-y-1 border-t border-slate-100 pt-2">
+                  <p className="text-slate-700">{t('export.population')}</p>
+                  <label className="flex items-center gap-2">
+                    <input type="radio" name={`${uid}-population`} checked={population === 'all'} onChange={() => setPopulation('all')} />
+                    <span>{t('export.population_all')}</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="radio" name={`${uid}-population`} checked={population === 'categories'} onChange={() => setPopulation('categories')} />
+                    <span>{t('export.population_categories')}</span>
+                  </label>
+                </div>
+              )}
             </fieldset>
           )}
           {projectionMode === 'selected' && (
