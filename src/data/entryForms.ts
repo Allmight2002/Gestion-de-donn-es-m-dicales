@@ -39,6 +39,10 @@ export interface EntryFormRepository {
   /** Echoue avec `EntryFormConflictError` si `expectedVersion` n'est plus la version courante. */
   update(id: string, expectedVersion: number, input: EntryFormInput): Promise<EntryForm>;
   remove(id: string, expectedVersion: number): Promise<void>;
+  /** Formulaire ouvert par « Nouveau patient » ; `null` = formulaire complet. */
+  getDefault(baseId: string): Promise<string | null>;
+  /** Reserve au proprietaire (RLS). `null` revient au formulaire complet. */
+  setDefault(baseId: string, formId: string | null): Promise<void>;
 }
 
 const COLUMNS = 'id, base_id, name, field_keys, required_keys, row_version, updated_at';
@@ -79,6 +83,8 @@ export function makeEntryFormRepository(client: SupabaseClient | null): EntryFor
       async create() { throw new Error('Backend Supabase non configure'); },
       async update() { throw new Error('Backend Supabase non configure'); },
       async remove() { throw new Error('Backend Supabase non configure'); },
+      async getDefault() { return null; },
+      async setDefault() { throw new Error('Backend Supabase non configure'); },
     };
   }
 
@@ -127,6 +133,29 @@ export function makeEntryFormRepository(client: SupabaseClient | null): EntryFor
         .select('id');
       if (error) throw error;
       if ((data ?? []).length !== 1) throw new EntryFormConflictError();
+    },
+
+    async getDefault(baseId) {
+      const { data, error } = await client
+        .from('base_entry_form_default')
+        .select('form_id')
+        .eq('base_id', baseId)
+        .maybeSingle();
+      if (error) throw error;
+      const formId = (data as { form_id?: unknown } | null)?.form_id;
+      return typeof formId === 'string' ? formId : null;
+    },
+
+    async setDefault(baseId, formId) {
+      // Une seule ligne par base : le choix est une ecriture unique, sans bascule en deux temps.
+      // Un formulaire supprime entre-temps est refuse par la cle etrangere : rien n'est ecrit.
+      const { error } = formId
+        ? await client.from('base_entry_form_default').upsert({ base_id: baseId, form_id: formId }, { onConflict: 'base_id' })
+        : await client.from('base_entry_form_default').delete().eq('base_id', baseId);
+      if (error) {
+        if ((error as { code?: string }).code === '23503') throw new EntryFormConflictError();
+        throw error;
+      }
     },
   };
 }

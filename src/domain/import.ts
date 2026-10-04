@@ -155,12 +155,42 @@ function refusalFor(field: TemplateField): ColumnMatch | null {
   return null;
 }
 
-/** Resolution d'un en-tete : meta connue, puis champ patient, puis champ rencontre. */
+const isOptionField = (field: TemplateField) => field.type === 'select' || field.type === 'multiselect';
+
+// Re-import d'un export MedData : l'export nomme ses colonnes par identifiant stable
+// `<portee>__<cle>` (jamais par libelle), et une liste controlee y porte en plus son code
+// stocke dans `option_code__<portee>__<cle>`. Sans cette reconnaissance, chaque colonne d'un
+// export devrait etre associee a la main.
+const EXPORT_COLUMN = /^(option_code__)?(patient|encounter)__(.+)$/i;
+
+/** En-tete au format de l'export : champ vise et nature de la colonne (code ou valeur). */
+function matchExportColumn(
+  header: string,
+  patient: TemplateField[],
+  encounter: TemplateField[],
+): { field: TemplateField; isCode: boolean } | null {
+  const m = EXPORT_COLUMN.exec((header ?? '').trim());
+  if (!m) return null;
+  const [, codePrefix, scope, key] = m;
+  const pool = scope.toLowerCase() === 'patient' ? patient : encounter;
+  const field = pool.find((f) => f.fieldKey === key) ?? pool.find((f) => f.fieldKey.toLowerCase() === key.toLowerCase());
+  if (!field) return null;
+  // `option_code__` n'existe que pour une liste controlee : ailleurs, ce n'est pas notre colonne.
+  if (codePrefix && !isOptionField(field)) return null;
+  return { field, isCode: Boolean(codePrefix) };
+}
+
+const targetOf = (field: TemplateField): ImportTarget =>
+  field.scope === 'patient' ? `patient:${field.fieldKey}` : `encounter:${field.fieldKey}`;
+
+/** Resolution d'un en-tete : meta connue, colonne d'export, puis champ patient, puis rencontre. */
 function matchColumn(header: string, patient: TemplateField[], encounter: TemplateField[]): ColumnMatch {
   const n = norm(header ?? '');
   if (!n) return { kind: 'none' };
   const meta = META_ALIASES[n];
   if (meta) return { kind: 'target', target: meta };
+  const exported = matchExportColumn(header, patient, encounter);
+  if (exported) return refusalFor(exported.field) ?? { kind: 'target', target: targetOf(exported.field) };
   const byName = (f: TemplateField) => norm(f.label) === n || norm(f.fieldKey) === n;
   const pf = patient.find(byName);
   if (pf) return refusalFor(pf) ?? { kind: 'target', target: `patient:${pf.fieldKey}` };
@@ -179,6 +209,17 @@ export function autoMapColumns(headers: string[], fields: TemplateField[]): Colu
     // Une colonne reconnue comme terminologie reste IGNOREE : la proposer promettrait un import
     // que ni le client ni le serveur ne savent faire.
     map[i] = match.kind === 'target' ? match.target : 'ignore';
+  });
+  // Export profil « complet » : une liste controlee y sort deux fois, libelle puis code. Le
+  // serveur valide le CODE stocke ; la colonne de code l'emporte donc, et celle du libelle
+  // reste ignoree au lieu de creer un conflit de cible.
+  const codeTargets = new Set<ImportTarget>();
+  headers.forEach((h, i) => {
+    if (map[i] !== 'ignore' && matchExportColumn(h, patient, encounter)?.isCode) codeTargets.add(map[i]);
+  });
+  headers.forEach((h, i) => {
+    if (!codeTargets.has(map[i])) return;
+    if (!matchExportColumn(h, patient, encounter)?.isCode) map[i] = 'ignore';
   });
   return map;
 }

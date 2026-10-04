@@ -268,16 +268,15 @@ export function exportFilenameSegment(value: unknown, fallback: string): string 
 
 /**
  * Mappe les colonnes date/datetime/heure de la feuille principale pour l'ecriture de cellules
- * Excel natives (L48). En mode RENCONTRE, `encounter_date` est une colonne de date meta ;
- * en mode PATIENT, seuls les champs rendus (patient + rencontre agreges) portent des dates.
+ * Excel natives (L48). Les deux modes rendent les champs patient et rencontre ; en mode
+ * RENCONTRE, `encounter_date` est en plus une colonne de date meta.
  */
 function temporalColumnsOf(
   fields: ReturnType<typeof mergeExportFields>,
   mode: 'encounter' | 'patient',
 ): Map<string, ExcelTemporalKind> {
   const map = new Map<string, ExcelTemporalKind>();
-  const rendered = mode === 'patient' ? fields : fields.filter((f) => f.scope === 'encounter');
-  for (const f of rendered) {
+  for (const f of fields) {
     if (f.type === 'date') map.set(columnId(f), 'date');
     else if (f.type === 'datetime') map.set(columnId(f), 'datetime');
     else if (f.type === 'time') map.set(columnId(f), 'time');
@@ -552,9 +551,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
       else throw new ExportCollectionError('inconsistent', 'completeness');
     }
 
-    // Le code d'un patient ecarte reste connu : en mode rencontre le fichier ne porte
-    // aucune donnee permanente, seulement `patient_code` -- une rencontre complete n'a
-    // donc pas a disparaitre parce que la fiche patient est encore incomplete.
+    // Le code d'un patient ecarte reste connu, pour rattacher les rencontres lues plus bas.
     const idToCode = new Map(patientRows.map((patient) => [patient.id, patient.patient_code]));
     const keptPatientRows = patientRows.filter((patient) => !incompletePatientIds.has(patient.id));
     const excludedPatientCount = patientRows.length - keptPatientRows.length;
@@ -688,12 +685,11 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     }
 
     const encounters = [...encMap.values()]
-      // En mode PATIENT la ligne est le patient : les rencontres d'un patient ecarte n'ont
-      // pas de ligne d'accueil, et laisser leurs valeurs dans les feuilles annexes
-      // produirait des `patient_code` orphelins. En mode RENCONTRE elles restent exportees :
-      // le fichier ne porte alors aucune donnee permanente, et ces rencontres, elles, sont
-      // completes.
-      .filter((encounter) => options.mode !== 'patient' || !incompletePatientIds.has(encounter.patient_id))
+      // Les deux modes rendent les donnees permanentes du patient sur chaque ligne : les
+      // rencontres d'un patient ecarte n'auraient que des cases patient vides, prises a tort
+      // pour des valeurs manquantes, et produiraient des `patient_code` orphelins dans les
+      // feuilles annexes. Elles suivent donc leur patient, dans les deux modes.
+      .filter((encounter) => !incompletePatientIds.has(encounter.patient_id))
       .map((encounter) => ({
         id: encounter.id,
         patientCode: idToCode.get(encounter.patient_id) ?? '',
@@ -966,8 +962,13 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     const revisionContext = makeRevisionContext(revisionLineage, stateColumns);
 
     const multivalueFields = fields.filter((f) => isMultivalueField(f));
-    const multivalueDataRows = options.mode === 'patient' ? patients : encounters;
-    const { indicatorsByField, omittedFieldKeys } = extractMultivalueCodes(fields, multivalueDataRows);
+    // En mode RENCONTRE, chaque portee lit ses propres fiches, comme `buildEncounterExport`.
+    const multivalueParts = options.mode === 'patient' ? [extractMultivalueCodes(fields, patients)] : [
+      extractMultivalueCodes(fields.filter((f) => f.scope === 'patient'), patients),
+      extractMultivalueCodes(fields.filter((f) => f.scope !== 'patient'), encounters),
+    ];
+    const indicatorsByField = new Map(multivalueParts.flatMap((part) => [...part.indicatorsByField]));
+    const omittedFieldKeys = new Set(multivalueParts.flatMap((part) => [...part.omittedFieldKeys]));
 
     // L47 : le profil Analyse exprime chaque modalite par une indicatrice. Au-dela du seuil de
     // cardinalite, des colonnes seraient DROPPEES silencieusement : l'export echoue donc
@@ -976,7 +977,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     if (options.profile === 'analysis') {
       const renderedMultiselectKeys = new Set(
         fields
-          .filter((f) => f.type === 'multiselect' && (options.mode === 'patient' || f.scope === 'encounter'))
+          .filter((f) => f.type === 'multiselect')
           .map((f) => f.fieldKey),
       );
       const refused = [...omittedFieldKeys].filter((key) => renderedMultiselectKeys.has(key));
@@ -995,7 +996,7 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     // sans que leurs colonnes soient restituees.
     const main = options.mode === 'patient'
       ? buildPatientExport(patients, encounters, fields, options.rule, options.profile, allFields, revisionContext)
-      : buildEncounterExport(encounters, fields, options.profile, allFields, revisionContext);
+      : buildEncounterExport(encounters, fields, options.profile, allFields, revisionContext, patients);
     // L49 : le dictionnaire suit le profil — reduit a l'interpretation en Analyse, detaille en Complet.
     const dict = buildDictionary(fields, {
       indicatorsByField,

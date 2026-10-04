@@ -1218,6 +1218,7 @@ export const messages = {
     'export.shape': 'Forme du fichier',
     'export.shape_cross_sectional': 'Une ligne par participant',
     'export.shape_event_registry': 'Une ligne par événement',
+    'export.shape_longitudinal': 'Une ligne par rencontre, variables du patient répétées',
     'export.shape_hint': 'Déterminée par le modèle d’observation de la base.',
     'export.format': 'Format',
     'export.profile': 'Profil de données',
@@ -1978,6 +1979,10 @@ export const messages = {
     'entryform.group_count': '{n} sur {total} dans le formulaire',
     'entryform.conflict': 'Ce formulaire a changé entre-temps. Vos réglages sont conservés : rechargez avant de recommencer.',
     'entryform.reload': 'Recharger les formulaires',
+    'entryform.default_label': 'Ouvert par « Nouveau patient »',
+    'entryform.default_hint': 'Le formulaire affiché en premier lors de l’enregistrement d’un patient. Les autres restent accessibles depuis l’écran de saisie.',
+    'entryform.default_badge': 'Par défaut',
+    'entryform.default_saved': 'Formulaire par défaut enregistré',
     'entryform.open_manage': 'Gérer les formulaires de saisie',
   } as const;
 

@@ -20,7 +20,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { Checkbox } from '../../components/Checkbox';
 import { useTopBarActions, type TopBarAction } from '../../components/TopBar';
 import { useNarrowViewport } from '../../lib/useNarrowViewport';
-import { useEntryFormSelection } from './EntryFormPicker';
+import { FULL_FORM_PARAM, useEntryFormSelection } from './EntryFormPicker';
 import {
   downloadBaseSnapshot, isOfflineEnabled, offlineCache, snapshotMeta, useOnline, MAX_OFFLINE_PATIENTS,
   type OfflineMeta, type OfflinePatient, type SnapshotSource,
@@ -419,7 +419,15 @@ export function BaseHome() {
   const isMissionAccess = !!listing && listing.expiresAt != null;
   const narrow = useNarrowViewport();
   // Formulaires courts de la base : un raccourci de creation, la fiche reste la meme.
-  const entryForms = useEntryFormSelection(id, canCreate).forms;
+  const entrySelection = useEntryFormSelection(id, canCreate);
+  const entryForms = entrySelection.forms;
+  // « Nouveau patient » ouvre le formulaire par defaut de la base ; le formulaire complet reste
+  // alors accessible a cote des autres formulaires courts.
+  const defaultEntryForm = entrySelection.defaultForm;
+  const otherEntryForms = [
+    ...(defaultEntryForm ? [{ id: FULL_FORM_PARAM, name: t('entryform.full') }] : []),
+    ...entryForms.filter((form) => form.id !== defaultEntryForm?.id),
+  ];
   // Audit UI mobile, lot 2 (5.4-B) : sur telephone, ce qui alimente la liste (import, saisie
   // hors-ligne) passe dans « ⋯ » de la barre haute ; les memes actions restent dans la page
   // a partir de `lg`. L'action du quotidien, « Nouveau patient », devient un bouton flottant.
@@ -427,7 +435,7 @@ export function BaseHome() {
   if (canEdit && !isMissionAccess) {
     topBarActions.push({ label: t('base.tab_import'), onSelect: () => navigate(`/bases/${id}/import`) });
   }
-  for (const form of entryForms) {
+  for (const form of otherEntryForms) {
     topBarActions.push({ label: t('entryform.new_patient_with').replace('{form}', form.name), onSelect: () => navigate(`/bases/${id}/patients/new/manual?form=${encodeURIComponent(form.id)}`) });
   }
   if (intakeEnabled && listing && canCreate && !isMissionAccess) {
@@ -543,7 +551,7 @@ export function BaseHome() {
                 <Upload size={16} aria-hidden /> {t('base.tab_import')}
               </button>
             )}
-            {canCreate && entryForms.length > 0 && (
+            {canCreate && otherEntryForms.length > 0 && (
               <div className="shrink-0 max-lg:hidden">
                 <Menu
                   triggerLabel={t('entryform.new_with')}
@@ -551,7 +559,7 @@ export function BaseHome() {
                   triggerContent={t('entryform.new_with')}
                   panelClassName="card absolute right-0 z-10 mt-2 w-64 max-w-[calc(100vw-2rem)] p-2 shadow-lg"
                 >
-                  {entryForms.map((form) => (
+                  {otherEntryForms.map((form) => (
                     <MenuItem key={form.id} onSelect={() => navigate(`/bases/${id}/patients/new/manual?form=${encodeURIComponent(form.id)}`)}>
                       {form.name}
                     </MenuItem>

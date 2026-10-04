@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261004090000_time_field_type.sql`
-- Tables : 60 · Policies RLS : 72 · Triggers : 151 · Fonctions : 430
+- Dernière migration incluse : `20261004120000_base_default_entry_form.sql`
+- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 431
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -125,6 +125,24 @@ Policies :
 
 Triggers :
 - `trg_base_entry_form_guard` — BEFORE INSERT/UPDATE → `guard_base_entry_form()`
+
+### base_entry_form_default · RLS activée
+
+| Colonne | Type | Nullable | Défaut |
+|---|---|---|---|
+| base_id | uuid | non |  |
+| form_id | uuid | non |  |
+| updated_by | uuid | oui | `auth.uid()` |
+| updated_at | timestamp with time zone | non | `now()` |
+
+Policies :
+- `base_entry_form_default_delete` (DELETE) — USING (is_base_active(base_id) AND is_base_owner(base_id))
+- `base_entry_form_default_insert` (INSERT) — WITH CHECK (is_base_active(base_id) AND is_base_owner(base_id))
+- `base_entry_form_default_select` (SELECT) — USING (is_base_active(base_id) AND has_base_access(base_id))
+- `base_entry_form_default_update` (UPDATE) — USING (is_base_active(base_id) AND is_base_owner(base_id)) · WITH CHECK (is_base_active(base_id) AND is_base_owner(base_id))
+
+Triggers :
+- `trg_base_entry_form_default_guard` — BEFORE INSERT/UPDATE → `guard_base_entry_form_default()`
 
 ### base_invitation · RLS activée
 
@@ -1534,6 +1552,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | guard_access_escalation | — | INVOKER | plpgsql |
 | guard_base_access_medecin | — | DEFINER | plpgsql |
 | guard_base_entry_form | — | DEFINER | plpgsql |
+| guard_base_entry_form_default | — | INVOKER | plpgsql |
 | guard_base_inclusion_target_revision | — | INVOKER | plpgsql |
 | guard_base_owner_immutable | — | INVOKER | plpgsql |
 | guard_base_template_version | — | DEFINER | plpgsql |
