@@ -1632,18 +1632,37 @@ export function buildEncounterExport(
   operandFields?: ExportField[],
   /** E6 : lignee des revisions et colonnes d etat. Absent = fichier identique a avant le lot. */
   context?: RevisionContext,
+  /**
+   * Fiches patient des rencontres exportees. Un fichier long (suivi repete) sans ses donnees
+   * permanentes -- sexe, antecedents, date de naissance -- n'est pas analysable : chaque ligne
+   * REPETE donc les variables de son patient. Absent = aucune fiche connue, cases vides.
+   */
+  patients: ExportPatient[] = [],
 ): ExportTable {
-  const encFields = mergeExportFields(fields).filter((f) => f.scope === 'encounter');
+  const all = mergeExportFields(fields);
+  const encFields = all.filter((f) => f.scope === 'encounter');
+  const patientFields = all.filter((f) => f.scope === 'patient');
   const { indicatorsByField } = extractMultivalueCodes(encFields, encounters);
-  const coding = fieldsWithCoding(encFields, encounters);
-  // L35 : les operandes d'une variable calculee sont de la MEME portee — l'index ne
-  // contient donc que les variables de rencontre, et il est construit une seule fois.
-  const encPeers = formulaFieldIndex(
-    operandFields ? mergeExportFields(operandFields).filter((f) => f.scope === 'encounter') : encFields,
-  );
+  const { indicatorsByField: patIndicators } = extractMultivalueCodes(patientFields, patients);
+  const coding = new Set([...fieldsWithCoding(encFields, encounters), ...fieldsWithCoding(patientFields, patients)]);
+  // L35 : les operandes d'une variable calculee sont de la MEME portee — un index par portee,
+  // construit une seule fois.
+  const operands = operandFields ? mergeExportFields(operandFields) : all;
+  const encPeers = formulaFieldIndex(operands.filter((f) => f.scope === 'encounter'));
+  const patPeers = formulaFieldIndex(operands.filter((f) => f.scope === 'patient'));
+  const patientByCode = new Map(patients.map((p) => [p.code, p]));
 
   const columns = [
     ...ENCOUNTER_META,
+    // Variables permanentes juste apres la meta, comme en une ligne par patient : le fichier
+    // se lit patient puis rencontre.
+    ...patientFields.flatMap((f) => {
+      const base = columnsForFields([f], profile);
+      const inds = (patIndicators.get(f.fieldKey) ?? []).map((i) => i.columnId);
+      const state = context?.stateColumns.has(columnId(f)) ? [stateColumnId(f)] : [];
+      const prov = coding.has(columnId(f)) ? codingColumnIds(f) : [];
+      return [...base, ...state, ...prov, ...inds];
+    }),
     ...encFields.flatMap((f) => {
       const base = columnsForFields([f], profile);
       const inds = (indicatorsByField.get(f.fieldKey) ?? []).map((i) => i.columnId);
@@ -1655,10 +1674,18 @@ export function buildEncounterExport(
     }),
   ];
 
-  const rows = [...encounters].sort((a, b) =>
+  // Un patient sans aucune rencontre garde SA ligne : variables permanentes renseignees,
+  // colonnes de rencontre vides. Sinon il disparaitrait du fichier sans que rien le dise.
+  const withEncounter = new Set(encounters.map((e) => e.patientCode));
+  const patientOnly: ExportEncounter[] = patients
+    .filter((p) => !withEncounter.has(p.code))
+    .map((p) => ({ id: '', patientCode: p.code, encounterDate: null, encounterType: '', data: {} }));
+
+  const rows = [...encounters, ...patientOnly].sort((a, b) =>
     a.patientCode.localeCompare(b.patientCode) || dateKeyOf(a).localeCompare(dateKeyOf(b)) ||
     a.id.localeCompare(b.id)
   ).map((e) => {
+    const patientOnlyRow = e.id === '';
     // L70 : sans date, il n'y a pas d'age a l'occurrence — et surtout rien a inventer. Les
     // trois cases sortent VIDES ensemble ; un repli sur `age_at_encounter` ecrirait ici un
     // age qu'aucune date ne soutient.
@@ -1672,15 +1699,33 @@ export function buildEncounterExport(
       age_unit: dated ? (e.ageUnit ?? '') : '',
       group_section_key: e.groupSectionKey ?? '',
     };
+    const p = patientByCode.get(e.patientCode);
+    for (const f of patientFields) {
+      assignField(row, p?.data ?? null, p?.templateVersionId, f, patPeers, profile, context, null);
+      if (coding.has(columnId(f))) assignCoding(row, p?.data, p?.templateVersionId, f, context);
+      assignIndicators(
+        row,
+        f,
+        patIndicators.get(f.fieldKey) ?? [],
+        p?.data,
+        p?.templateVersionId,
+        profile,
+        context,
+      );
+    }
+    // Ligne patient seule : cases de rencontre vides, comme en une ligne par patient sans
+    // rencontre -- jamais une valeur deduite d'une fiche qui n'existe pas.
+    const encData = patientOnlyRow ? null : e.data;
+    const encVersion = patientOnlyRow ? undefined : e.templateVersionId;
     for (const f of encFields) {
-      assignField(row, e.data, e.templateVersionId, f, encPeers, profile, context, e.encounterType);
-      if (coding.has(columnId(f))) assignCoding(row, e.data, e.templateVersionId, f, context);
+      assignField(row, encData, encVersion, f, encPeers, profile, context, patientOnlyRow ? null : e.encounterType);
+      if (coding.has(columnId(f))) assignCoding(row, encData, encVersion, f, context);
       assignIndicators(
         row,
         f,
         indicatorsByField.get(f.fieldKey) ?? [],
-        e.data,
-        e.templateVersionId,
+        encData,
+        encVersion,
         profile,
         context,
       );
