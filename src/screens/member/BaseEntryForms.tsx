@@ -48,6 +48,9 @@ export function BaseEntryForms() {
   const [sections, setSections] = useState<TemplateSection[]>([]);
   const [commonLayout, setCommonLayout] = useState<TemplateCommonLayout | undefined>(undefined);
   const [forms, setForms] = useState<EntryForm[]>([]);
+  // Formulaire ouvert par « Nouveau patient » (`null` = formulaire complet).
+  const [defaultId, setDefaultId] = useState<string | null>(null);
+  const [defaultError, setDefaultError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -60,7 +63,9 @@ export function BaseEntryForms() {
 
   const reloadForms = useCallback(async () => {
     if (!baseId) return;
-    setForms(await repository.list(baseId));
+    const [rows, current] = await Promise.all([repository.list(baseId), repository.getDefault(baseId)]);
+    setForms(rows);
+    setDefaultId(current);
   }, [baseId, repository]);
 
   useEffect(() => {
@@ -74,13 +79,16 @@ export function BaseEntryForms() {
         setIsOwner(listing?.role === 'owner');
         const versionId = listing?.base.currentTemplateVersionId;
         if (listing?.role === 'owner' && versionId) {
-          const [version, rows] = await Promise.all([templates.getVersion(versionId), repository.list(baseId)]);
+          const [version, rows, current] = await Promise.all([
+            templates.getVersion(versionId), repository.list(baseId), repository.getDefault(baseId),
+          ]);
           if (!active) return;
           setFields(version.fields);
           setRules(version.rules);
           setSections(version.sections ?? []);
           setCommonLayout(version.version.commonLayout);
           setForms(rows);
+          setDefaultId(current);
         }
         setError(null);
       } catch (e) {
@@ -200,6 +208,27 @@ export function BaseEntryForms() {
     }
   }
 
+  async function changeDefault(formId: string | null) {
+    if (!baseId || busy) return;
+    setBusy(true);
+    setDefaultError(null);
+    try {
+      await repository.setDefault(baseId, formId);
+      setDefaultId(formId);
+      toast(t('entryform.default_saved'));
+    } catch (e) {
+      // Formulaire supprime entre-temps : rien n'est ecrit, la liste est rechargee.
+      if (e instanceof EntryFormConflictError) {
+        setDefaultError(t('entryform.conflict'));
+        await reloadForms().catch(() => {});
+      } else {
+        setDefaultError(errorMessage(e, t('common.error')));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function reloadAfterConflict() {
     try {
       const rows = baseId ? await repository.list(baseId) : [];
@@ -239,6 +268,25 @@ export function BaseEntryForms() {
           ) : (
             // La ligne ouvre le formulaire ; « ⋯ » porte Modifier et Supprimer (T4, T9) : plus aucun
             // bouton ne dispute la largeur au nom, et l'action destructive quitte le premier niveau.
+            <>
+            {/* Le formulaire ouvert par « Nouveau patient » : une personne peu familiere de
+                l'application ne cherche pas le selecteur, elle tombe directement sur le bon. */}
+            <div className="card space-y-1 p-4 sm:p-5">
+              <label className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <span className="font-medium text-slate-800 dark:text-slate-100">{t('entryform.default_label')}</span>
+                <select
+                  className="input w-auto min-w-0 max-w-full sm:w-72"
+                  value={defaultId ?? ''}
+                  disabled={busy}
+                  onChange={(event) => void changeDefault(event.target.value || null)}
+                >
+                  <option value="">{t('entryform.full')}</option>
+                  {forms.map((form) => <option key={form.id} value={form.id}>{form.name}</option>)}
+                </select>
+              </label>
+              <p className="helper-text">{t('entryform.default_hint')}</p>
+              {defaultError && <p role="alert" className="text-sm text-red-600">{defaultError}</p>}
+            </div>
             <ul className="card divide-y divide-slate-100 dark:divide-slate-800">
               {forms.map((form) => (
                 <li key={form.id} className="flex items-center gap-1 pr-2">
@@ -248,7 +296,10 @@ export function BaseEntryForms() {
                     aria-label={`${t('entryform.edit')} ${form.name}`}
                     className="flex min-h-14 min-w-0 flex-1 flex-col justify-center px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 sm:px-5"
                   >
-                    <span className="block break-words text-sm font-medium text-slate-800 dark:text-slate-100">{form.name}</span>
+                    <span className="block break-words text-sm font-medium text-slate-800 dark:text-slate-100">
+                      {form.name}
+                      {form.id === defaultId && <span className="badge ml-2 align-middle">{t('entryform.default_badge')}</span>}
+                    </span>
                     <span className="block whitespace-nowrap text-xs text-slate-500">{t('entryform.count').replace('{n}', String(form.fieldKeys.length))}</span>
                   </button>
                   <Menu
@@ -265,6 +316,7 @@ export function BaseEntryForms() {
                 </li>
               ))}
             </ul>
+            </>
           ))}
 
           {draft && preview && (

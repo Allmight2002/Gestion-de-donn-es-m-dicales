@@ -75,7 +75,8 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   // (docs/spec-comptes-mission.md §4) : la base refuse aussi cette voie.
   const maySubmitToCuration = !isMissionAccount(profile);
   // Formulaire de saisie court (en ligne, saisie directe), offert a tout compte qui cree des fiches.
-  const entry = useEntryFormSelection(baseId, mode === 'manual' && !useLocalSupport);
+  // Sans `?form=`, l'ecran s'ouvre sur le formulaire par defaut choisi par le proprietaire.
+  const entry = useEntryFormSelection(baseId, mode === 'manual' && !useLocalSupport, { applyDefault: true });
 
   const [fields, setFields] = useState<TemplateField[]>([]);
   const [rules, setRules] = useState<ValidationRule[]>([]);
@@ -500,7 +501,8 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   useTopBarActions(mode === 'manual' && maySubmitToCuration
     ? [{ label: t('create.submit'), onSelect: () => navigate(`/bases/${baseId}/patients/new/submit`) }] : null);
 
-  if (loading) return <SkeletonList rows={7} label={t('common.loading')} />;
+  // Le formulaire par defaut est connu avant le premier affichage : pas de bascule sous les doigts.
+  if (loading || entry.loading) return <SkeletonList rows={7} label={t('common.loading')} />;
 
   // Une proposition est toujours rendue avec sa source. Cela vaut aussi pour les donnees
   // permanentes : le texte libre reste dans le champ compagnon, jamais dans le diagnostic.

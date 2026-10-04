@@ -114,3 +114,58 @@ describe('base_entry_form', () => {
     expect(created.data).toEqual({ sexe: 'F' });
   });
 });
+
+describe('base_entry_form_default', () => {
+  const setDefault = (uid: string, base: string, formId: string) => rowsAs(uid,
+    `insert into public.base_entry_form_default (base_id, form_id, updated_by) values ($1, $2, $3)
+     on conflict (base_id) do update set form_id = excluded.form_id returning form_id, updated_by`,
+    [base, formId, bobId]);
+
+  test('le validateur du trigger reste inaccessible comme RPC', async () => {
+    const rows = (await db.admin.query(
+      `select has_function_privilege('anon', 'public.guard_base_entry_form_default()', 'execute') as anon,
+              has_function_privilege('authenticated', 'public.guard_base_entry_form_default()', 'execute') as authenticated`,
+    )).rows;
+    expect(rows).toEqual([{ anon: false, authenticated: false }]);
+  });
+
+  test('le propriétaire fixe puis change le défaut en une seule ligne ; l’auteur n’est pas forgeable', async () => {
+    const [admission] = await insertForm(aliceId, 'Admission', ['sexe']);
+    const [sortie] = await insertForm(aliceId, 'Sortie', ['blood_group']);
+    expect(await setDefault(aliceId, baseId, admission.id)).toEqual([{ form_id: admission.id, updated_by: aliceId }]);
+    await setDefault(aliceId, baseId, sortie.id);
+    expect((await db.admin.query(
+      'select form_id from public.base_entry_form_default where base_id = $1', [baseId])).rows).toEqual([{ form_id: sortie.id }]);
+    // Changer le défaut ne touche pas la version des formulaires (aucun faux conflit d'édition).
+    expect((await db.admin.query(
+      'select row_version from public.base_entry_form where id = any($1::uuid[]) order by name', [[admission.id, sortie.id]])).rows)
+      .toEqual([{ row_version: '1' }, { row_version: '1' }]);
+  });
+
+  test('un collaborateur lit le défaut mais ne peut ni le fixer, ni le changer, ni le retirer', async () => {
+    expect(await rowsAs(editorId, 'select form_id from public.base_entry_form_default where base_id = $1', [baseId])).toHaveLength(1);
+    const [form] = await rowsAs(aliceId, `select id from public.base_entry_form where base_id = $1 and name = 'Admission'`, [baseId]);
+    await expect(setDefault(editorId, baseId, form.id)).rejects.toThrow(/row-level security|policy/i);
+    expect(await rowsAs(editorId,
+      'delete from public.base_entry_form_default where base_id = $1 returning base_id', [baseId])).toEqual([]);
+    expect(await rowsAs(bobId, 'select form_id from public.base_entry_form_default where base_id = $1', [baseId])).toEqual([]);
+  });
+
+  test('le défaut doit être un formulaire de la même base', async () => {
+    const [other] = (await db.admin.query(
+      `insert into public.base (name, specialty, owner_user_id, current_template_version_id)
+       select 'Autre registre fictif', specialty, owner_user_id, current_template_version_id from public.base where id = $1
+       returning id`, [baseId])).rows.map((row) => row.id);
+    const [form] = await rowsAs(aliceId, `select id from public.base_entry_form where base_id = $1 and name = 'Admission'`, [baseId]);
+    await expect(db.admin.query(
+      'insert into public.base_entry_form_default (base_id, form_id) values ($1, $2)', [other, form.id],
+    )).rejects.toThrow(/base_entry_form_default_form_fk|foreign key/i);
+  });
+
+  test('supprimer le formulaire par défaut ramène « Nouveau patient » au formulaire complet', async () => {
+    expect(await rowsAs(aliceId,
+      `delete from public.base_entry_form where base_id = $1 and name = 'Sortie' returning id`, [baseId])).toHaveLength(1);
+    expect((await db.admin.query(
+      'select form_id from public.base_entry_form_default where base_id = $1', [baseId])).rows).toEqual([]);
+  });
+});

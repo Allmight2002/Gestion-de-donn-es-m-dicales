@@ -1963,5 +1963,9 @@ export const messages = {
     'entryform.group_count': '{n} of {total} in the form',
     'entryform.conflict': 'This form changed in the meantime. Your settings are kept: reload before trying again.',
     'entryform.reload': 'Reload forms',
+    'entryform.default_label': 'Opened by “New patient”',
+    'entryform.default_hint': 'The form shown first when registering a patient. The other forms remain available from the entry screen.',
+    'entryform.default_badge': 'Default',
+    'entryform.default_saved': 'Default form saved',
     'entryform.open_manage': 'Manage entry forms',
   } as const satisfies MessageDictionary;
