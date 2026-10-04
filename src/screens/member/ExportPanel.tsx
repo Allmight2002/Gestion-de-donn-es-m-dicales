@@ -1,5 +1,5 @@
 import { errorMessage } from '../../lib/errorMessage';
-import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAuditRepository, useBaseRepository, useCohortRepository, useExportRepository, useTemplateRepository } from '../../data/RepositoryProvider';
@@ -10,6 +10,7 @@ import { formatDateTime } from '../../lib/formatDate';
 import { sectionLabel } from '../../domain/templateSections';
 import type { AggregationRule, SectionProjectionMode } from '../../domain/export';
 import { HelpTip } from '../../components/HelpTip';
+import { exportDiagnosisCategories, type ExportDiagnosisCategory } from '../../domain/exportCategories';
 
 function downloadUrl(url: string, filename: string) {
   try {
@@ -46,6 +47,15 @@ function FieldHint({ id, children }: { id: string; children: ReactNode }) {
   return <span id={id} className="mt-0.5 hidden text-xs text-slate-500 sm:block">{children}</span>;
 }
 
+/** Recherche sans accents ni casse, sur le libelle ou la cle. */
+function normalize(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+function matches(query: string, ...candidates: string[]): boolean {
+  const q = normalize(query.trim());
+  return q === '' || candidates.some((c) => normalize(c).includes(q));
+}
+
 /** Forme des lignes imposee par le modele d'observation ; `null` = la question reste posee. */
 function rowShapeOf(model: ObservationModel): 'patient' | 'encounter' | null {
   if (model === 'cross_sectional') return 'patient';
@@ -77,6 +87,12 @@ export function ExportPanel() {
   const [blocks, setBlocks] = useState<TemplateSection[]>([]);
   const [projectionMode, setProjectionMode] = useState<SectionProjectionMode>('all');
   const [selectedBlocks, setSelectedBlocks] = useState<string[]>([]);
+  // Avec des dizaines de blocs, la liste brute ne se parcourt plus : une categorie
+  // diagnostique coche d'un coup les blocs qui lui sont associes et restreint la liste a eux.
+  const [categories, setCategories] = useState<ExportDiagnosisCategory[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [categoryQuery, setCategoryQuery] = useState('');
+  const [blockQuery, setBlockQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [downloadId, setDownloadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +105,18 @@ export function ExportPanel() {
   const msg = (e: unknown) => (errorMessage(e, t('common.error')));
   const imposedShape = rowShapeOf(observationModel);
   const mode = imposedShape ?? chosenShape;
-  const projectionIncomplete = projectionMode === 'selected' && selectedBlocks.length === 0;
+  // Blocs des categories cochees ; `null` = aucun filtre par categorie.
+  const categoryBlocks = useMemo(() => {
+    if (selectedCategories.length === 0) return null;
+    return new Set(categories.filter((c) => selectedCategories.includes(c.code)).flatMap((c) => c.blockKeys));
+  }, [categories, selectedCategories]);
+  // Un bloc coche puis sorti du filtre n'est plus affiche : il ne part donc pas non plus.
+  const exportedBlocks = categoryBlocks ? selectedBlocks.filter((key) => categoryBlocks.has(key)) : selectedBlocks;
+  const projectionIncomplete = projectionMode === 'selected' && exportedBlocks.length === 0;
+  const visibleCategories = categories.filter((c) => matches(categoryQuery, c.label, c.code));
+  const visibleBlocks = blocks.filter((block) =>
+    (!categoryBlocks || categoryBlocks.has(block.sectionKey))
+    && matches(blockQuery, sectionLabel(t, block), block.sectionKey));
 
   const load = useCallback(async () => {
     if (!baseId) return;
@@ -107,6 +134,15 @@ export function ExportPanel() {
       } catch {
         setBlocks([]);
       }
+      // Meme regle : sans associations lisibles, le choix bloc par bloc reste disponible.
+      try {
+        const detail = versionId ? await templates.getVersion(versionId) : null;
+        setCategories(detail
+          ? exportDiagnosisCategories(detail.version, detail.fields, detail.rules, detail.sections ?? [])
+          : []);
+      } catch {
+        setCategories([]);
+      }
     } catch (e) {
       setError(msg(e));
     }
@@ -119,6 +155,29 @@ export function ExportPanel() {
 
   function toggleBlock(key: string) {
     setSelectedBlocks((current) => current.includes(key) ? current.filter((k) => k !== key) : [...current, key]);
+  }
+
+  // Cocher une categorie coche ses blocs ; la decocher retire ceux qu'aucune autre
+  // categorie encore cochee ne reclame. Les blocs restent ensuite decochables un par un.
+  function toggleCategory(code: string) {
+    const category = categories.find((c) => c.code === code);
+    if (!category) return;
+    if (selectedCategories.includes(code)) {
+      const remaining = selectedCategories.filter((c) => c !== code);
+      const kept = new Set(categories.filter((c) => remaining.includes(c.code)).flatMap((c) => c.blockKeys));
+      setSelectedCategories(remaining);
+      setSelectedBlocks((current) => current.filter((key) => kept.has(key) || !category.blockKeys.includes(key)));
+    } else {
+      setSelectedCategories([...selectedCategories, code]);
+      setSelectedBlocks((current) => [...new Set([...current, ...category.blockKeys])]);
+    }
+  }
+
+  function setVisibleBlocks(checked: boolean) {
+    const keys = visibleBlocks.map((block) => block.sectionKey);
+    setSelectedBlocks((current) => checked
+      ? [...new Set([...current, ...keys])]
+      : current.filter((key) => !keys.includes(key)));
   }
 
   async function run() {
@@ -153,7 +212,7 @@ export function ExportPanel() {
           scope: ENCOUNTER_SCOPE,
           // L53 : `all` est le defaut et reproduit exactement le comportement anterieur.
           sectionProjection: projectionMode === 'selected'
-            ? { mode: 'selected', blockKeys: selectedBlocks }
+            ? { mode: 'selected', blockKeys: exportedBlocks }
             : { mode: 'all' },
         },
       });
@@ -330,11 +389,68 @@ export function ExportPanel() {
             </select>
             <FieldHint id={`${uid}-projection-hint`}>{t('export.projection_hint')}</FieldHint>
           </div>
+          {projectionMode === 'selected' && categories.length > 0 && (
+            <fieldset className="space-y-2">
+              <legend className="text-slate-700">{t('export.categories')}</legend>
+              <p className="text-xs text-slate-500">{t('export.categories_hint')}</p>
+              {categories.length > 8 && (
+                <input
+                  type="search"
+                  className="input"
+                  aria-label={t('export.categories_search')}
+                  placeholder={t('export.categories_search')}
+                  value={categoryQuery}
+                  onChange={(e) => setCategoryQuery(e.target.value)}
+                />
+              )}
+              <ul className="max-h-60 space-y-1 overflow-y-auto">
+                {visibleCategories.map((category) => (
+                  <li key={category.code}>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedCategories.includes(category.code)}
+                        onChange={() => toggleCategory(category.code)}
+                      />
+                      <span>{category.label}</span>
+                      <span className="text-xs text-slate-400">
+                        {t('export.categories_blocks').replace('{n}', String(category.blockKeys.length))}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
+          )}
           {projectionMode === 'selected' && (
             <fieldset className="space-y-2">
               <legend className="sr-only">{t('export.projection')}</legend>
-              <ul className="space-y-1">
-                {blocks.map((block) => (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-slate-600">
+                  {t('export.blocks_selected').replace('{n}', String(exportedBlocks.length))}
+                  {categoryBlocks && ` · ${t('export.blocks_filtered')}`}
+                </p>
+                <span className="flex gap-3 text-xs">
+                  <button type="button" className="font-medium text-teal-700 hover:underline" onClick={() => setVisibleBlocks(true)}>
+                    {t('export.blocks_check_all')}
+                  </button>
+                  <button type="button" className="font-medium text-teal-700 hover:underline" onClick={() => setVisibleBlocks(false)}>
+                    {t('export.blocks_uncheck_all')}
+                  </button>
+                </span>
+              </div>
+              {blocks.length > 8 && (
+                <input
+                  type="search"
+                  className="input"
+                  aria-label={t('export.blocks_search')}
+                  placeholder={t('export.blocks_search')}
+                  value={blockQuery}
+                  onChange={(e) => setBlockQuery(e.target.value)}
+                />
+              )}
+              <ul className="max-h-80 space-y-1 overflow-y-auto">
+                {visibleBlocks.map((block) => (
                   <li key={block.sectionKey}>
                     <label className="flex items-center gap-2">
                       <input
