@@ -4,43 +4,66 @@ import { useEntryFormRepository } from '../../data/RepositoryProvider';
 import type { EntryForm } from '../../data/entryForms';
 import { useI18n } from '../../i18n/useI18n';
 
+/** `?form=full` : ouvrir explicitement le formulaire complet, meme si la base en a fixe un autre. */
+export const FULL_FORM_PARAM = 'full';
+
 /**
  * Choix du formulaire de saisie d'une fiche : formulaire complet ou formulaire court de la base.
  *
  * Le choix est un etat LOCAL de l'ecran : changer de formulaire ne quitte pas la page et ne
  * perd aucune saisie. `?form=<id>` ne sert qu'a ouvrir l'ecran directement sur un formulaire.
+ * Avec `applyDefault` (creation d'une fiche) et sans `?form=`, l'ecran s'ouvre sur le formulaire
+ * par defaut choisi par le proprietaire ; s'il est illisible ou supprime, sur le formulaire complet.
  * Un compte de mission ne peut pas enregistrer de fiche partielle : il garde le formulaire complet.
  */
-export function useEntryFormSelection(baseId: string | undefined, enabled: boolean) {
+export function useEntryFormSelection(baseId: string | undefined, enabled: boolean, { applyDefault = false } = {}) {
   const repository = useEntryFormRepository();
   const [params] = useSearchParams();
   const [requestedId] = useState(() => params.get('form'));
+  const explicitFull = requestedId === FULL_FORM_PARAM;
+  const wantsDefault = applyDefault && requestedId === null;
   const [forms, setForms] = useState<EntryForm[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(requestedId);
-  const [loading, setLoading] = useState(enabled && requestedId !== null);
+  const [defaultId, setDefaultId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(explicitFull ? null : requestedId);
+  const [loading, setLoading] = useState(enabled && (requestedId !== null || wantsDefault));
   const [problem, setProblem] = useState<'load' | 'missing' | null>(null);
 
   useEffect(() => {
-    if (!baseId || !enabled) { setForms([]); setLoading(false); return; }
+    if (!baseId || !enabled) { setForms([]); setDefaultId(null); setLoading(false); return; }
     let active = true;
-    repository.list(baseId).then((rows) => {
+    // Le defaut n'est qu'une commodite : s'il est illisible, la liste et le formulaire complet restent.
+    const defaultRequest = repository.getDefault(baseId).catch(() => null);
+    repository.list(baseId).then(async (rows) => {
+      const fallback = await defaultRequest;
       if (!active) return;
       setForms(rows);
+      const known = fallback && rows.some((form) => form.id === fallback) ? fallback : null;
+      setDefaultId(known);
+      if (wantsDefault && known) setSelectedId(known);
       // Un lien vers un formulaire supprime retombe sur le formulaire complet, et le dit.
-      if (requestedId && !rows.some((form) => form.id === requestedId)) { setSelectedId(null); setProblem('missing'); }
+      if (requestedId && !explicitFull && !rows.some((form) => form.id === requestedId)) { setSelectedId(null); setProblem('missing'); }
     }).catch(() => {
       if (!active) return;
       setForms([]);
-      if (requestedId) { setSelectedId(null); setProblem('load'); }
+      setDefaultId(null);
+      if (requestedId && !explicitFull) { setSelectedId(null); setProblem('load'); }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [baseId, enabled, repository, requestedId]);
+  }, [baseId, enabled, repository, requestedId, explicitFull, wantsDefault]);
 
   const selected = useMemo(
     () => (enabled ? forms.find((form) => form.id === selectedId) ?? null : null),
     [enabled, forms, selectedId],
   );
-  return { forms: enabled ? forms : [], selected, loading, problem, select: (id: string | null) => { setSelectedId(id); setProblem(null); } };
+  return {
+    forms: enabled ? forms : [],
+    /** Formulaire ouvert par « Nouveau patient » (`null` = formulaire complet). */
+    defaultForm: enabled ? forms.find((form) => form.id === defaultId) ?? null : null,
+    selected,
+    loading,
+    problem,
+    select: (id: string | null) => { setSelectedId(id); setProblem(null); },
+  };
 }
 
 export function EntryFormPicker({ forms, selected, onSelect, disabled = false }: {
