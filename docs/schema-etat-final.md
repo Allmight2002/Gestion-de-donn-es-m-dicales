@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261004120000_base_default_entry_form.sql`
-- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 431
+- Dernière migration incluse : `20261004150000_inclusion_date_refresh_without_noop_write.sql`
+- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 433
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1447,6 +1447,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | create_base_from_model_observation | p_name text, p_specialty text, p_source_version_id uuid, p_observation_model text | DEFINER | plpgsql |
 | create_base_invitation | p_base_id uuid, p_invited_email text, p_access_role text, p_can_view_identity boolean, p_can_view_raw_documents boolean, p_can_edit_structured_data boolean, p_can_export_data boolean, p_can_manage_access boolean, p_token_hash text, p_expires_at timestamp with time zone | DEFINER | plpgsql |
 | create_cohort_snapshot | p_base_id uuid, p_name text, p_filter jsonb, p_validated_only boolean | INVOKER | plpgsql |
+| create_cohort_snapshot_by_diagnosis | p_base_id uuid, p_name text, p_codes text[], p_validated_only boolean | INVOKER | plpgsql |
 | create_curation_submission | p_base_id uuid, p_target_patient_id uuid, p_external_ref text, p_scope text | DEFINER | plpgsql |
 | create_encounter | p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text, p_group_section_key text | DEFINER | plpgsql |
 | create_encounter_idempotent | p_operation_id text, p_patient_id uuid, p_encounter_type text, p_encounter_date date, p_validation_status text, p_data jsonb, p_age_unit text, p_group_section_key text | DEFINER | plpgsql |
@@ -1623,6 +1624,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | is_strict_time_text | p_value text | INVOKER | sql |
 | is_system_admin | — | DEFINER | sql |
 | issue_base_purge_challenge | p_base_id uuid, p_operation_id uuid | DEFINER | plpgsql |
+| jsonb_has_any_code | p_value jsonb, p_codes text[] | INVOKER | sql |
 | jsonb_matches | p_data jsonb, p_conds jsonb | INVOKER | plpgsql |
 | list_deleted_bases | — | DEFINER | plpgsql |
 | list_importable_template_sections | — | INVOKER | sql |

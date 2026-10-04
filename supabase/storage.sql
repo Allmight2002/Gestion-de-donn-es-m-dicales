@@ -77,6 +77,7 @@ with check (
 
 -- ---------------------------------------------------------------------------
 -- 2) Pieces jointes cliniques (identite) — gouvernees par can_view/can_write_identity.
+-- Fiche patient (cahier §4.7) : images et PDF uniquement ; l'Office reste reserve a la curation.
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('clinical-attachments', 'clinical-attachments', false)
@@ -87,11 +88,7 @@ on conflict (id) do update set
     'image/jpeg',
     'image/png',
     'image/webp',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    'application/pdf'
   ];
 
 update storage.buckets
@@ -100,11 +97,7 @@ update storage.buckets
          'image/jpeg',
          'image/png',
          'image/webp',
-         'application/pdf',
-         'application/msword',
-         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-         'application/vnd.ms-excel',
-         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+         'application/pdf'
        ]
  where id = 'clinical-attachments';
 

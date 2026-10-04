@@ -14,6 +14,7 @@ import { hiddenFieldKeys, withoutHiddenValues } from '../../domain/validation';
 import { EncounterFields, HiddenValuesConfirmation, SectionedFields, fieldAppliesToType } from './EncounterFields';
 import { FieldInput } from './FieldInput';
 import { useSignedFile } from '../../lib/useSignedFile';
+import { ALLOWED_ATTACHMENT_ACCEPT } from '../../domain/imageUpload';
 import { SkeletonList } from '../../components/Skeleton';
 import { useVisibilityWithdrawal } from './useVisibilityWithdrawal';
 
@@ -347,7 +348,7 @@ export function CurationTask() {
               ) : (
                 <span>{t('curation.dropzone')}</span>
               )}
-              <input type="file" className="hidden" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />
+              <input type="file" accept={ALLOWED_ATTACHMENT_ACCEPT} className="hidden" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} />
             </label>
 
             <button

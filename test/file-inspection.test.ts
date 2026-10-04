@@ -39,6 +39,13 @@ describe('detectContainer (signatures)', () => {
 });
 
 describe('inspectHeader (coherence extension <-> signature)', () => {
+  test("scope 'patient' : refuse un vrai docx/xls, accepte PDF et image", () => {
+    expect(inspectHeader({ name: 'lettre.docx', size: 2000 }, u8(SIG.zip), 'patient').ok).toBe(false);
+    expect(inspectHeader({ name: 'vieux.xls', size: 2000 }, u8(SIG.ole), 'patient').ok).toBe(false);
+    expect(inspectHeader({ name: 'cr.pdf', size: 2000 }, u8(SIG.pdf), 'patient')).toMatchObject({ ok: true, ext: 'pdf' });
+    expect(inspectHeader({ name: 'scan.png', size: 2000 }, u8(SIG.png), 'patient')).toMatchObject({ ok: true, ext: 'png' });
+  });
+
   test('accepte les fichiers coherents', () => {
     expect(inspectHeader({ name: 'compte-rendu.pdf', size: 2000 }, u8(SIG.pdf))).toMatchObject({ ok: true, ext: 'pdf', type: 'application/pdf' });
     expect(inspectHeader({ name: 'scan.PNG', size: 2000 }, u8(SIG.png))).toMatchObject({ ok: true, ext: 'png', isImage: true });

@@ -372,7 +372,7 @@ export function makeCurationRepository(client: SupabaseClient | null): CurationR
     async addRawDocument(input) {
       // Inspection par magic bytes (§5.3) : on refuse un fichier deguise et on enregistre
       // le type REEL detecte + l'empreinte, plutot que de faire confiance au navigateur.
-      const v = await inspectFile(input.file);
+      const v = await inspectFile(input.file, 'curation');
       if (!v.ok) throw new Error(v.error);
       const fileHash = await sha256Hex(input.file);
       const operationKey = await stableUploadOperationKey(

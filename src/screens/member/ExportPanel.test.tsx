@@ -344,6 +344,119 @@ describe('ExportPanel', () => {
     });
   });
 
+  // Avec des dizaines de blocs, on choisit une categorie diagnostique : ses blocs associes
+  // (regles d'affichage canoniques) sont coches et seuls eux restent affiches.
+  describe('projection par categorie diagnostique', () => {
+    const SECTIONS: TemplateSection[] = [
+      { id: 's1', sectionKey: 'tuberculose', label: 'Tuberculose', displayOrder: 0, parentSectionKey: null },
+      { id: 's2', sectionKey: 'malnutrition', label: 'Malnutrition', displayOrder: 1, parentSectionKey: null },
+      { id: 's3', sectionKey: 'vih', label: 'VIH', displayOrder: 2, parentSectionKey: null },
+    ];
+    const show = (codes: string[], section: string) => ({ id: section, message: null, severity: 'error' as const,
+      rule: { if: { field: 'diag', operator: 'contains_any', value: codes }, then: { section, operator: 'visible' } } });
+    const repo = {
+      async getSections() { return SECTIONS; },
+      async getVersion() {
+        return {
+          version: { id: 'v1', templateId: 't1', versionNumber: 1, status: 'published' as const,
+            diagnosisContext: [{ scope: 'encounter', diagnosisFieldKey: 'diag', terminologyReleaseId: null,
+              commonOnlyCodes: [], proposalFieldKey: 'diag_autre', recognizedCodes: ['TB', 'HIV'] }] },
+          fields: [
+            field({ fieldKey: 'diag', label: 'Diagnostic', scope: 'encounter', type: 'multiselect',
+              allowedOptions: [{ valueKey: 'TB', label: 'Tuberculose pulmonaire', isActive: true },
+                { valueKey: 'HIV', label: 'Infection VIH', isActive: true }] } as Parameters<typeof field>[0]),
+            field({ fieldKey: 'crachat', label: 'Crachat', scope: 'encounter', type: 'text', section: 'tuberculose' }),
+            field({ fieldKey: 'poids', label: 'Poids', scope: 'encounter', type: 'number', section: 'malnutrition' }),
+            field({ fieldKey: 'cd4', label: 'CD4', scope: 'encounter', type: 'integer', section: 'vih' }),
+          ],
+          rules: [show(['TB'], 'tuberculose'), show(['TB', 'HIV'], 'malnutrition'), show(['HIV'], 'vih')],
+          sections: SECTIONS,
+        };
+      },
+    } as unknown as TemplateRepository;
+
+    test('une categorie coche et limite les blocs, la projection part restreinte', async () => {
+      const recordExport = vi.fn(async (_i: RecordExportInput): Promise<ExportLogItem> => ({
+        id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 1, fileHash: 'deadbeef', storedFilePath: null,
+      }));
+      const exportsRepo = { recordExport, async listExports() { return []; } } as unknown as ExportRepository;
+      render(
+        <I18nProvider>
+          <RepositoryProvider bases={baseRepo} templates={repo} exports={exportsRepo}>
+            <MemoryRouter initialEntries={['/bases/b1/cohorts/c1/export']}>
+              <Routes>
+                <Route path="/bases/:id/cohorts/:cohortId/export" element={<ExportPanel />} />
+              </Routes>
+            </MemoryRouter>
+          </RepositoryProvider>
+        </I18nProvider>,
+      );
+      await screen.findByText('Exporter une cohorte');
+      await userEvent.selectOptions(await screen.findByRole('combobox', { name: /blocs à exporter/i }), 'selected');
+      await userEvent.click(await screen.findByRole('checkbox', { name: /Tuberculose pulmonaire/ }));
+
+      expect(screen.getByRole('checkbox', { name: 'Tuberculose' })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'Malnutrition' })).toBeChecked();
+      expect(screen.queryByRole('checkbox', { name: 'VIH' })).toBeNull();
+      expect(screen.getByText(/2 bloc\(s\) exporté\(s\)/)).toBeInTheDocument();
+
+      // Un bloc reste decochable un par un.
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Malnutrition' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+      expect(recordExport.mock.calls[0][0].options).toMatchObject({
+        sectionProjection: { mode: 'selected', blockKeys: ['tuberculose'] },
+      });
+    });
+
+    async function renderBaseExport() {
+      const createSnapshot = vi.fn(async () => ({ id: 'tous' }));
+      const createSnapshotByDiagnosis = vi.fn(async () => ({ id: 'par-categorie' }));
+      const recordExport = vi.fn(async (_i: RecordExportInput): Promise<ExportLogItem> => ({
+        id: 'x', format: 'csv', exportedAt: '2024-01-01', patientCount: 1, encounterCount: 2, fileHash: 'deadbeef', storedFilePath: null,
+      }));
+      const exportsRepo = { recordExport, async listBaseExports() { return []; } } as unknown as ExportRepository;
+      const cohortsRepo = { createSnapshot, createSnapshotByDiagnosis } as unknown as CohortRepository;
+      render(
+        <I18nProvider>
+          <RepositoryProvider bases={baseRepo} templates={repo} exports={exportsRepo} cohorts={cohortsRepo}>
+            <MemoryRouter initialEntries={['/bases/b1/export']}>
+              <Routes>
+                <Route path="/bases/:id/export" element={<ExportPanel />} />
+              </Routes>
+            </MemoryRouter>
+          </RepositoryProvider>
+        </I18nProvider>,
+      );
+      await screen.findByRole('heading', { name: 'Exporter les données' });
+      await userEvent.selectOptions(await screen.findByRole('combobox', { name: /blocs à exporter/i }), 'selected');
+      await userEvent.click(await screen.findByRole('checkbox', { name: /Tuberculose pulmonaire/ }));
+      return { createSnapshot, createSnapshotByDiagnosis, recordExport };
+    }
+
+    test('par defaut, tous les patients partent, meme sans categorie', async () => {
+      const { createSnapshot, createSnapshotByDiagnosis, recordExport } = await renderBaseExport();
+      expect(screen.getByRole('radio', { name: /Tous les patients/ })).toBeChecked();
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+      expect(createSnapshot).toHaveBeenCalledWith('b1', expect.stringContaining('Toutes les données'), { conditions: [] }, false);
+      expect(createSnapshotByDiagnosis).not.toHaveBeenCalled();
+      expect(recordExport.mock.calls[0][0].cohortId).toBe('tous');
+    });
+
+    test('seulement les patients des categories cochees : population figee par diagnostic', async () => {
+      const { createSnapshot, createSnapshotByDiagnosis, recordExport } = await renderBaseExport();
+      await userEvent.click(screen.getByRole('radio', { name: /Seulement les patients des catégories cochées/ }));
+      await userEvent.click(screen.getByRole('button', { name: 'Exporter les données' }));
+      await waitFor(() => expect(recordExport).toHaveBeenCalledTimes(1));
+      expect(createSnapshotByDiagnosis).toHaveBeenCalledWith(
+        'b1', expect.stringContaining('Tuberculose pulmonaire'), ['TB'], false,
+      );
+      expect(createSnapshot).not.toHaveBeenCalled();
+      expect(recordExport.mock.calls[0][0].cohortId).toBe('par-categorie');
+    });
+  });
+
   // UX-15 — etat d'execution, echec pres de l'action, bilan lisible de l'historique.
   describe('etat d execution et bilan (UX-15)', () => {
     const SECTIONS: TemplateSection[] = [
