@@ -41,11 +41,12 @@ interface State {
 function deps(state: State = {}): InspectDeps {
   const updates = state.updates ?? [];
   const userResponder: Responder = (call) =>
-    call.kind === 'from' && call.table === 'raw_document'
+    call.kind === 'from' && (call.table === 'raw_document' || call.table === 'clinical_attachment')
       ? okResult(
         'doc' in state ? state.doc : {
           id: ID,
           base_id: BASE,
+          patient_id: 'patient-1',
           storage_path: PATH,
           inspection_status: 'pending',
           inspection_attempt_count: 0,
@@ -65,7 +66,8 @@ function deps(state: State = {}): InspectDeps {
       if (call.method === 'upload') return state.quarantineUpload ?? okResult({ path: 'q' });
       return okResult([{}]); // remove
     }
-    if (call.kind === 'from' && call.table === 'raw_document') {
+    if (call.kind === 'from' && call.table === 'patient') return okResult({ base_id: BASE });
+    if (call.kind === 'from' && (call.table === 'raw_document' || call.table === 'clinical_attachment')) {
       const isUpdate = call.ops.some((o) => o.m === 'update');
       if (isUpdate) {
         const payload = call.ops.find((o) => o.m === 'update')?.a[0] as Record<string, unknown>;
@@ -169,6 +171,53 @@ Deno.test('inspect-upload: fichier infecte -> 409 quarantined', async () => {
   assertEquals(status, 409);
   assertEquals(body.status, 'quarantined');
   assertEquals(body.signature, 'Eicar-Test');
+});
+
+// docx minimal : signature ZIP + marqueurs du sous-format Word.
+const DOCX = new Blob([new TextEncoder().encode('PK\u0003\u0004[Content_Types].xml word/document.xml')]);
+const officeDoc = (path: string) => ({
+  id: ID,
+  base_id: BASE,
+  patient_id: 'patient-1',
+  storage_path: path,
+  inspection_status: 'pending',
+  inspection_attempt_count: 0,
+  last_inspection_attempt_at: null,
+});
+
+Deno.test('inspect-upload: fichier Office sur la fiche patient -> 409 quarantined sans scan', async () => {
+  let scanned = false;
+  const d = deps({ doc: officeDoc(`${BASE}/patient-1/lettre.docx`), download: okResult(DOCX) });
+  d.scan = () => {
+    scanned = true;
+    return Promise.resolve({ ok: true, infected: false });
+  };
+  const { status, body } = await readResponse(
+    await handleInspectUpload(makeRequest({ body: { entity: 'attachment', id: ID } }), d),
+  );
+  assertEquals(status, 409);
+  assertEquals(body.status, 'quarantined');
+  assertEquals(body.expectedContainer, null);
+  assertEquals(scanned, false);
+});
+
+Deno.test('inspect-upload: PDF sur la fiche patient -> 200 accepted', async () => {
+  const { status, body } = await readResponse(
+    await handleInspectUpload(
+      makeRequest({ body: { entity: 'attachment', id: ID } }),
+      deps({ doc: officeDoc(`${BASE}/patient-1/cr.pdf`) }),
+    ),
+  );
+  assertEquals(status, 200);
+  assertEquals(body.status, 'accepted');
+});
+
+Deno.test('inspect-upload: fichier Office en curation -> 200 accepted', async () => {
+  const { status, body } = await readResponse(
+    await handleInspectUpload(req(), deps({ doc: officeDoc(`${BASE}/lettre.docx`), download: okResult(DOCX) })),
+  );
+  assertEquals(status, 200);
+  assertEquals(body.status, 'accepted');
 });
 
 Deno.test('inspect-upload: timeout scanner -> 503 + remise en etat coherent', async () => {

@@ -41,3 +41,18 @@ describe('validateAttachmentFile (images + PDF + Office)', () => {
     expect(validateAttachmentFile({ name: 'x.pdf', type: 'application/pdf', size: MAX_DOCUMENT_BYTES + 1 }).ok).toBe(false);
   });
 });
+
+describe("validateAttachmentFile scope 'patient' (fiche patient : images + PDF)", () => {
+  test('accepte images et PDF', () => {
+    expect(validateAttachmentFile({ name: 'scan.jpeg', type: 'image/jpeg', size: 1000 }, 'patient')).toMatchObject({ ok: true, isImage: true });
+    expect(validateAttachmentFile({ name: 'cr.pdf', type: 'application/pdf', size: 1000 }, 'patient')).toMatchObject({ ok: true, ext: 'pdf' });
+  });
+
+  test('refuse les fichiers Office (reserves a la curation)', () => {
+    for (const name of ['lettre.doc', 'lettre.docx', 'tab.xls', 'tab.xlsx']) {
+      const r = validateAttachmentFile({ name, type: '', size: 1000 }, 'patient');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/PDF uniquement/);
+    }
+  });
+});

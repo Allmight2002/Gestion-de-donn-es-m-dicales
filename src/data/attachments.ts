@@ -116,10 +116,10 @@ export function makeAttachmentRepository(client: SupabaseClient | null): Attachm
       if (!input.deidentificationConfirmed) throw new Error('La deidentification doit etre confirmee avant tout envoi');
       if (!input.label?.trim()) throw new Error('Le libelle du document est requis');
       // Inspection par magic bytes (§5.3) : refuse un fichier deguise (ex. .exe en .pdf).
-      const v = await inspectFile(input.file);
+      const v = await inspectFile(input.file, 'patient');
       if (!v.ok) throw new Error(v.error);
 
-      // Images : reencodees (EXIF supprime). Documents (PDF/Office) : envoyes tels quels.
+      // Images : reencodees (EXIF supprime). PDF : envoyes tels quels (Office refuse ici).
       const blob: Blob = v.isImage ? await reencodeImage(input.file, v.type) : input.file;
       const fileHash = await sha256Hex(blob);
       const operationKey = await stableUploadOperationKey(
