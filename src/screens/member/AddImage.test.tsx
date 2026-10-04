@@ -37,6 +37,15 @@ describe('AddImage (documents)', () => {
     expect(addImage).not.toHaveBeenCalled();
   });
 
+  test('refuse un fichier Office (images et PDF uniquement sur la fiche patient)', async () => {
+    const addImage = vi.fn(async (_i: AddImageInput) => ({ id: 'a1' }));
+    renderAddImage(addImage);
+    expect(fileInput()).toHaveAttribute('accept', '.jpg,.jpeg,.png,.webp,.pdf');
+    fireEvent.change(fileInput(), { target: { files: [new File(['x'], 'lettre.docx', { type: '' })] } });
+    expect(await screen.findByText(/PDF uniquement/i)).toBeInTheDocument();
+    expect(addImage).not.toHaveBeenCalled();
+  });
+
   test('le libelle ET la deidentification sont obligatoires', async () => {
     const addImage = vi.fn(async (_i: AddImageInput) => ({ id: 'a1' }));
     renderAddImage(addImage);

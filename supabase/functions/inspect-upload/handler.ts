@@ -56,6 +56,9 @@ const EXPECTED_CONTAINER: Record<string, string> = {
   docx: 'zip',
   xlsx: 'zip',
 };
+// Fiche patient (cahier §4.7) : images et PDF uniquement. Un fichier Office depose dans le
+// bucket des pieces cliniques (UI contournee) est traite comme un type incoherent.
+const CLINICAL_ATTACHMENT_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'pdf']);
 const MIME_BY_CONTAINER: Record<string, string> = {
   jpg: 'image/jpeg',
   png: 'image/png',
@@ -318,7 +321,8 @@ export async function handleInspectUpload(req: Request, deps: InspectDeps): Prom
   const fileSize = bytes.byteLength;
   const ext = extOf(path);
   const detectedContainer = detectContainer(bytes.slice(0, 16));
-  const expectedContainer = EXPECTED_CONTAINER[ext];
+  const extAllowed = bucket === 'raw-documents' || CLINICAL_ATTACHMENT_EXTS.has(ext);
+  const expectedContainer = extAllowed ? EXPECTED_CONTAINER[ext] : undefined;
   const detectedMimeType = detectedContainer && expectedContainer === detectedContainer
     ? MIME_BY_EXT[ext]
     : detectedContainer

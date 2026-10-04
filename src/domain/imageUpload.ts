@@ -1,4 +1,6 @@
-// Validation des pieces jointes de la fiche patient (cahier §12, §14) — PUR, testable.
+// Validation des fichiers deposes (cahier §4.7, §4.8, §14) — PUR, testable.
+// Deux politiques : la fiche patient n'accepte que des images et des PDF (cahier §4.7) ; les
+// documents source de la curation acceptent en plus les fichiers Office.
 // Images (jpg/jpeg/png/webp) : reencodees a l'upload pour supprimer les metadonnees (EXIF).
 // Documents (pdf, doc/docx, xls/xlsx) : envoyes tels quels. Le medecin confirme la
 // deidentification dans tous les cas. Validation par EXTENSION (le type MIME des fichiers
@@ -46,8 +48,16 @@ export const ALLOWED_ATTACHMENT_FORMATS: Record<string, AttachmentFormat> = {
   xls: { mime: 'application/vnd.ms-excel', isImage: false },
   xlsx: { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', isImage: false },
 };
-/** Valeur de l'attribut HTML `accept` pour le selecteur de fichier. */
+/** Valeur de l'attribut HTML `accept` pour le selecteur de fichier (documents de curation). */
 export const ALLOWED_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx';
+
+/** Fiche patient (cahier §4.7) : images et PDF uniquement, jamais d'Office. */
+export const PATIENT_ATTACHMENT_EXTS: readonly string[] = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
+export const PATIENT_ATTACHMENT_ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf';
+const PATIENT_FORMAT_ERROR = 'Format non autorise : images (jpg, png, webp) ou PDF uniquement.';
+
+/** Politique de formats : `patient` (images + PDF) ou `curation` (images + PDF + Office). */
+export type AttachmentScope = 'patient' | 'curation';
 
 export type AttachmentValidation =
   | { ok: true; ext: string; type: string; isImage: boolean }
@@ -55,10 +65,16 @@ export type AttachmentValidation =
 
 const extOf = (name: string): string => (name.split('.').pop() ?? '').toLowerCase();
 
-/** Validateur ELARGI : images + PDF + Office (cahier §14). Type DECLARE seulement. */
-export function validateAttachmentFile(file: { name: string; type: string; size: number }): AttachmentValidation {
+/** Validateur par extension selon la politique (`curation` par defaut). Type DECLARE seulement. */
+export function validateAttachmentFile(
+  file: { name: string; type: string; size: number },
+  scope: AttachmentScope = 'curation',
+): AttachmentValidation {
   const ext = extOf(file.name);
   const fmt = ALLOWED_ATTACHMENT_FORMATS[ext];
+  if (scope === 'patient' && (!fmt || !PATIENT_ATTACHMENT_EXTS.includes(ext))) {
+    return { ok: false, error: PATIENT_FORMAT_ERROR };
+  }
   if (!fmt) {
     return { ok: false, error: 'Format non autorise : images (jpg, png, webp), PDF ou Office (doc, docx, xls, xlsx).' };
   }
@@ -101,8 +117,12 @@ export type FileInspection =
   | { ok: false; error: string };
 
 /** Coherence extension <-> signature reelle. PUR (testable sans objet File). */
-export function inspectHeader(meta: { name: string; size: number }, header: Uint8Array): FileInspection {
-  const base = validateAttachmentFile({ name: meta.name, type: '', size: meta.size });
+export function inspectHeader(
+  meta: { name: string; size: number },
+  header: Uint8Array,
+  scope: AttachmentScope = 'curation',
+): FileInspection {
+  const base = validateAttachmentFile({ name: meta.name, type: '', size: meta.size }, scope);
   if (!base.ok) return base;
   const expected = EXPECTED_CONTAINER[base.ext];
   const detected = detectContainer(header);
@@ -118,9 +138,9 @@ export function inspectHeader(meta: { name: string; size: number }, header: Uint
 }
 
 /** Lit l'entete du fichier (16 octets) et verifie la signature. Navigateur. */
-export async function inspectFile(file: File): Promise<FileInspection> {
+export async function inspectFile(file: File, scope: AttachmentScope = 'curation'): Promise<FileInspection> {
   const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
-  return inspectHeader({ name: file.name, size: file.size }, header);
+  return inspectHeader({ name: file.name, size: file.size }, header, scope);
 }
 
 /** SHA-256 (hex) d'un blob — empreinte d'integrite de l'objet stocke. */

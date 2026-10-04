@@ -3,11 +3,11 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useI18n } from '../../i18n/useI18n';
 import { useAttachmentRepository } from '../../data/RepositoryProvider';
-import { validateAttachmentFile, ALLOWED_ATTACHMENT_ACCEPT } from '../../domain/imageUpload';
+import { validateAttachmentFile, PATIENT_ATTACHMENT_ACCEPT } from '../../domain/imageUpload';
 import { Checkbox } from '../../components/Checkbox';
 import { HelpDetails } from '../../components/HelpTip';
 
-// Ecran "Ajouter un document" (cahier §8.8, §14) : images (jpg/png/webp), PDF et Office.
+// Ecran "Ajouter un document" (cahier §4.7, §8.8) : images (jpg/png/webp) et PDF uniquement.
 // Un fichier a la fois, LIBELLE obligatoire, case de deidentification OBLIGATOIRE. Les
 // images sont reencodees (EXIF supprime) cote repo ; les autres envoyees telles quelles.
 export function AddImage() {
@@ -39,7 +39,7 @@ export function AddImage() {
       setFile(null);
       return;
     }
-    const v = validateAttachmentFile(f);
+    const v = validateAttachmentFile(f, 'patient');
     if (!v.ok) {
       setError(v.error);
       setFile(null);
@@ -97,7 +97,7 @@ export function AddImage() {
           <span className="font-medium text-slate-700">{t('image.file')}</span>
           <input
             type="file"
-            accept={ALLOWED_ATTACHMENT_ACCEPT}
+            accept={PATIENT_ATTACHMENT_ACCEPT}
             onChange={onFile}
             className="mt-1 block w-full text-sm"
           />
