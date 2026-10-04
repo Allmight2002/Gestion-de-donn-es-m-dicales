@@ -13,6 +13,7 @@ Pour une décision d'architecture, consulter `docs/architecture.md`; pour une pr
 - Ne pas modifier une migration potentiellement appliquée. Créer une migration horodatée additive et compatible; préserver données, provenance et interfaces.
 - Sur conflit de version, préserver tous les inputs locaux, éviter toute écriture ou suppression partielle, et signaler un conflit structuré nécessitant rechargement ou résolution explicite.
 - Préserver les modifications utilisateur hors périmètre. Ne pas committer, pousser, fusionner, déployer, appliquer de migration distante ou modifier le cloud sans demande explicite.
+- Ouvrir toute Pull Request vers `develop`, jamais vers `main` : `main` ne reçoit que les releases `develop` → `main` (voir `CONTRIBUTING.md`).
 
 ## Travail et coordination
 

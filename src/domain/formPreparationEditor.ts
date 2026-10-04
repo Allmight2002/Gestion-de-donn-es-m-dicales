@@ -136,6 +136,12 @@ function asSections(definition: FormDefinition, source: PreparationEditorLoaded)
       displayOrder: numberValue(entry.displayOrder, original?.displayOrder ?? index),
       parentSectionKey: hasOwn(entry, 'parentSectionKey')
         ? nullableString(entry.parentSectionKey) : original?.parentSectionKey ?? null,
+      // Le serveur n'émet ces clés que pour un groupe répétable ; une préparation
+      // antérieure peut ne pas les porter : la section source fait alors foi.
+      isRepeatable: typeof entry.isRepeatable === 'boolean'
+        ? entry.isRepeatable : original?.isRepeatable ?? false,
+      addLabel: hasOwn(entry, 'addLabel') ? nullableString(entry.addLabel) : original?.addLabel ?? null,
+      itemLabel: hasOwn(entry, 'itemLabel') ? nullableString(entry.itemLabel) : original?.itemLabel ?? null,
     }];
   }).sort((a, b) => a.displayOrder - b.displayOrder || a.sectionKey.localeCompare(b.sectionKey));
 }
