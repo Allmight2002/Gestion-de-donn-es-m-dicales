@@ -40,7 +40,7 @@ import { canCorrectPatientIdentity } from '../../domain/patientIdentity';
 import {
   groupFieldsBySection, maskedRepeatableSectionKeys, repeatableGroupFields, sectionLabel, withRepeatableSteps,
 } from '../../domain/templateSections';
-import { RepeatableGroupTable } from './RepeatableGroup';
+import { isEmptyOccurrenceValue, RepeatableGroupTable } from './RepeatableGroup';
 import { useEntryFormSelection } from './EntryFormPicker';
 import { Menu, MenuItem } from '../../components/Menu';
 import { repeatableLabels } from '../../domain/repeatableLabels';
@@ -558,7 +558,9 @@ export function PatientDetail() {
 
   // Decision 3 (T8) : une valeur vide n'occupe plus une ligne. Le compte reste annonce, et le
   // bouton les remet toutes. Un code de donnee manquante n'est pas vide : il est affiche.
-  const emptyPermanentCount = patientSteps.reduce((count, step) => count + (step.kind === 'repeatable' ? 0
+  const emptyPermanentCount = patientSteps.reduce((count, step) => count + (step.kind === 'repeatable'
+    ? occurrencesOf(step.section.sectionKey).reduce((empty, row) => empty + groupColumnsOf(step.section.sectionKey)
+      .filter((column) => isEmptyOccurrenceValue(row.data[column.fieldKey])).length, 0)
     : step.group.fields.filter((f) => fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields) === '—').length), 0);
   // Une section (ou sous-section) sans aucune valeur enregistree, ni descendante qui en porte,
   // est masquee avec ses valeurs vides ; « Afficher les champs vides » la remet.
@@ -751,6 +753,7 @@ export function PatientDetail() {
               rankLabel={repeatableLabels(t, step.section).rank}
               columns={groupColumnsOf(step.section.sectionKey)}
               rows={occurrencesOf(step.section.sectionKey)}
+              hideEmpty={!showEmpty}
             />
           </fieldset>
         ) : (() => {
