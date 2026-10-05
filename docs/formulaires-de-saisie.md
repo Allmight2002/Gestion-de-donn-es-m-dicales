@@ -42,6 +42,7 @@ dossier**, sans dupliquer la base ni synchroniser deux enregistrements.
 | 6 | Les données non renseignées restent vides | Une valeur proposée par le jeu de variables n'est envoyée que si sa variable est affichée dans le formulaire courant |
 | 7 | Complétude sur les variables applicables | L'indicateur de progression ne compte que les variables visibles du formulaire courant et ses indispensables |
 | 8 | Modifier ou supprimer un formulaire ne supprime ni variable ni donnée | Table de configuration séparée, sans lien d'écriture vers le gabarit ni les fiches |
+| 9 | Renommer le nom interne d'une variable ne la fait pas disparaître d'un formulaire | Les clés des formulaires des bases servies par la version suivent le renommage (`20261005010000`) |
 
 Un formulaire court garde le **statut** du dossier (le passer « complet » exigerait la fiche
 entière). Le passage à « complet » ou « vérifié » se fait depuis le formulaire complet.

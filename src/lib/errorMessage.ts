@@ -200,6 +200,17 @@ export function errorMessage(e: unknown, fallback: string): string {
       + "utilise cette variable, et une formule n'accepte que lettres sans accent, chiffres et « _ » "
       + "(pas d'accent, d'espace ni de tiret). Rien n'a été enregistré.";
   }
+  if (code === 'FIELD_KEY_RENAME_CONFLICT') {
+    return 'Ce nom interne est déjà porté par une autre valeur dans au moins un dossier : '
+      + "choisissez-en un autre. Rien n'a été enregistré.";
+  }
+  if (code === 'OPTION_REPLACEMENT_REQUIRED') {
+    return 'Une option retirée est encore choisie dans des dossiers : choisissez une option de '
+      + "remplacement ou videz ces valeurs. Rien n'a été enregistré.";
+  }
+  if (code === 'OPTION_REPLACEMENT_INVALID') {
+    return "Le remplacement choisi n'est pas une option active de la liste. Rien n'a été enregistré.";
+  }
   if (code === 'INVALID_BASE_NAME') {
     return "Le nom de la base doit compter entre 1 et 120 caractères. Rien n'a été enregistré.";
   }

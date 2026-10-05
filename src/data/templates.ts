@@ -6,6 +6,7 @@ import type { MissingCode } from '../domain/export';
 import { optionKeys, toRawOptions } from '../domain/fieldOptions';
 import type { TemplateDefinition } from '../domain/templateDefinition';
 import type {
+  FieldUsage,
   ImportableBlock,
   RuleBatchPayload,
   RuleBatchPlan,
@@ -74,9 +75,14 @@ export interface TemplateRepository {
   createRuleBatch?(versionId: string, operationId: string, payload: RuleBatchPayload, expectedFingerprint: string): Promise<RuleBatchReceipt>;
   /** Ajoute un champ et, le cas echeant, son compagnon dans la meme requete atomique. */
   addField(versionId: string, field: NewField, companion?: NewField): Promise<TemplateField>;
-  /** Modifie un champ. Le nom interne / type ne changent que si la variable n'a aucune donnee (garde cote base). */
+  /** Modifie un champ. Le type, la portee et le caractere requis ne changent que si la variable
+   *  n'a aucune donnee ; le nom interne peut changer (les valeurs suivent cote base). */
   updateField(fieldId: string, field: NewField): Promise<TemplateField>;
+  /** Supprime un champ. Une variable renseignee perd ses valeurs, journalisees cote base. */
   deleteField(fieldId: string): Promise<void>;
+  /** Comptes de dossiers concernes par une suppression ou un retrait d'option. Absent : les
+   *  gestes sur une variable deja utilisee restent verrouilles a l'ecran. */
+  fieldUsage?(fieldId: string): Promise<FieldUsage>;
   /** Reordonne les variables d'une version (drag & drop) : `orderedIds` dans le nouvel ordre. */
   reorderFields(versionId: string, orderedIds: string[]): Promise<void>;
   addRule(versionId: string, rule: unknown, message: string, severity: RuleSeverity): Promise<ValidationRule>;
@@ -666,6 +672,9 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         // `p_formula` selectionne la surcharge L35 de la RPC. Sans cette cle, PostgREST
         // resout la signature anterieure et la variable reste saisie.
         p_formula: field.formula?.trim() || null,
+        // `p_option_replacements` selectionne la surcharge 20261005010000 : options retirees
+        // d'une variable renseignee, remplacees ou videes dans la meme transaction.
+        p_option_replacements: field.optionReplacements ?? {},
       });
       if (error) throw error;
       clearVersionCache();
@@ -674,10 +683,24 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
     },
 
     async deleteField(fieldId) {
-      // Passe par la RPC : refuse la suppression d'une variable deja utilisee (garde serveur).
+      // Passe par la RPC : elle retire et journalise les valeurs d'une variable renseignee
+      // avant de supprimer la definition, en une transaction.
       const { error } = await client.rpc('delete_template_field', { p_field_id: fieldId });
       if (error) throw error;
       clearVersionCache();
+    },
+
+    async fieldUsage(fieldId) {
+      const { data, error } = await client.rpc('template_field_usage', { p_field_id: fieldId });
+      if (error) throw error;
+      const raw = (data ?? {}) as { records?: unknown; options?: unknown };
+      const options: Record<string, number> = {};
+      if (raw.options && typeof raw.options === 'object') {
+        for (const [key, value] of Object.entries(raw.options as Record<string, unknown>)) {
+          if (typeof value === 'number') options[key] = value;
+        }
+      }
+      return { records: typeof raw.records === 'number' ? raw.records : 0, options };
     },
 
     async reorderFields(versionId, orderedIds) {

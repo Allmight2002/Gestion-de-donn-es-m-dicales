@@ -16,15 +16,37 @@ import { HelpDetails } from '../../components/HelpTip';
  * gratuit : c'est lui qui apparaitra dans la colonne de code de l'export, donc dans
  * l'analyse.
  */
+/** Option retiree de la liste alors que des dossiers la portent encore. */
+export interface RetiredOption {
+  option: FieldOption;
+  records: number;
+}
+
+// Valeur technique du choix « vider » dans le menu : `makeValueKey` ne produit jamais de code
+// commencant par `_`, donc aucune option creee a l'ecran ne peut la porter.
+const CLEAR_CHOICE = '__clear__';
+
 export function OptionsEditor({
   options,
   onChange,
-  /** Variable deja utilisee : une option ne peut plus etre supprimee, seulement desactivee. */
+  /** Variable deja utilisee, sans comptes d'usage : une option ne peut plus etre supprimee,
+   *  seulement desactivee (parcours qui ne sait pas remplacer les valeurs). */
   locked = false,
+  retired = [],
+  replacements = {},
+  onReplacementChange,
+  showReplacementError = false,
 }: {
   options: FieldOption[];
   onChange: (next: FieldOption[]) => void;
   locked?: boolean;
+  /** Variable deja utilisee, comptes connus : options retirees encore choisies dans des
+   *  dossiers. Chacune exige un remplacement ou le vidage avant l'enregistrement. */
+  retired?: RetiredOption[];
+  /** Code retire -> code de remplacement, `null` = vider, absent = pas encore choisi. */
+  replacements?: Record<string, string | null | undefined>;
+  onReplacementChange?: (valueKey: string, replacement: string | null | undefined) => void;
+  showReplacementError?: boolean;
 }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState('');
@@ -107,9 +129,9 @@ export function OptionsEditor({
               >
                 ↓
               </button>
-              {/* Supprimer disparait des que la variable porte des donnees : le serveur le
-                  refuserait, et une option retiree rendrait invalides les fiches qui la
-                  portent. La desactivation reste offerte, elle. */}
+              {/* Sans comptes d'usage, supprimer disparait des que la variable porte des
+                  donnees : une option retiree rendrait invalides les fiches qui la portent.
+                  Avec les comptes, le retrait passe par un remplacement choisi ci-dessous. */}
               {!locked && (
                 <button
                   type="button"
@@ -143,6 +165,46 @@ export function OptionsEditor({
           {t('admin.option_add')}
         </button>
       </div>
+
+      {retired.length > 0 && (
+        <fieldset className="surface-muted flex flex-col gap-2 p-2">
+          <legend className="text-sm font-semibold text-slate-700">{t('admin.option_retired_title')}</legend>
+          {retired.map(({ option, records }) => {
+            const choice = replacements[option.valueKey];
+            const value = choice === undefined ? '' : choice === null ? CLEAR_CHOICE : choice;
+            return (
+              <div key={option.valueKey} className="flex flex-wrap items-end gap-2">
+                <span className="text-sm text-slate-700">
+                  {t('admin.option_retired_row').replace('{label}', option.label).replace('{n}', String(records))}
+                </span>
+                <label className="form-label flex-1 min-w-40">
+                  {t('admin.option_replacement_label').replace('{label}', option.label)}
+                  <select
+                    className="input"
+                    value={value}
+                    aria-invalid={showReplacementError && choice === undefined}
+                    onChange={(e) => onReplacementChange?.(option.valueKey,
+                      e.target.value === '' ? undefined : e.target.value === CLEAR_CHOICE ? null : e.target.value)}
+                  >
+                    <option value="">{t('admin.option_replacement_choose')}</option>
+                    {options.filter((o) => o.isActive).map((o) => (
+                      <option key={o.valueKey} value={o.valueKey}>{o.label}</option>
+                    ))}
+                    <option value={CLEAR_CHOICE}>{t('admin.option_replacement_clear')}</option>
+                  </select>
+                </label>
+                <button type="button" className="btn-ghost px-2" onClick={() => onChange([...options, option])}>
+                  {t('admin.option_restore')}
+                </button>
+              </div>
+            );
+          })}
+          <p className="helper-text">{t('admin.option_replacement_hint')}</p>
+          {showReplacementError && (
+            <p role="alert" className="text-xs text-red-700">{t('admin.option_replacement_required')}</p>
+          )}
+        </fieldset>
+      )}
 
       {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
       <p className="text-xs text-slate-500">{options.length} {t('admin.values_count')}</p>
