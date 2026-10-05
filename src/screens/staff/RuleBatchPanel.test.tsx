@@ -157,12 +157,22 @@ describe('RuleBatchPanel (UX-14(c))', () => {
 
   test('une version gelée annonce le refus au lieu de promettre une création', async () => {
     const user = userEvent.setup();
+    const previewRuleBatch = vi.fn(async (): Promise<RuleBatchPlan> => plan({ create: [{ target: 'technique' }], locked: true }));
+    renderPanel({ previewRuleBatch, createRuleBatch: vi.fn() });
+
+    await user.click(screen.getByRole('checkbox', { name: /Technique opératoire/ }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Créer les/ })).toBeDisabled();
+  });
+
+  test('une version déjà utilisée accepte le lot et précise qu’il ne revalide pas les fiches', async () => {
+    const user = userEvent.setup();
     const previewRuleBatch = vi.fn(async (): Promise<RuleBatchPlan> => plan({ create: [{ target: 'technique' }], inUse: true }));
     renderPanel({ previewRuleBatch, createRuleBatch: vi.fn() });
 
     await user.click(screen.getByRole('checkbox', { name: /Technique opératoire/ }));
-    expect(await screen.findByText(/déjà utilisée par des dossiers/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Créer les/ })).toBeDisabled();
+    expect(await screen.findByText(/prochains enregistrements/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Créer les/ })).toBeEnabled();
   });
 
   test('les cibles sont groupées par section et les règles créées restent atteignables', async () => {

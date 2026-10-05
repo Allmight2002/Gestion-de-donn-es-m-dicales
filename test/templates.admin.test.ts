@@ -315,8 +315,15 @@ describe('§8.3 regles de validation : versionnement + structure (cote serveur)'
     await expect(rowsAs(memberId, ADD_RULE, [freshVer, JSON.stringify({ foo: 'bar' }), 'm', 'block'])).rejects.toThrow(/structure/i);
   });
 
-  test('version DEJA UTILISEE -> ajout/suppression de regle refuse (creez une nouvelle version)', async () => {
-    await expect(rowsAs(memberId, ADD_RULE, [aliceVersionId, JSON.stringify({ operator: 'equals', left_field: f0, right_field: f1 }), 'm', 'block'])).rejects.toThrow(/utilisee|nouvelle version/i);
+  // 20261004170000 : une version deja utilisee accepte ajout, modification et suppression de
+  // regles ; elles s'appliquent aux prochains enregistrements, sans revalidation retroactive.
+  // La structure et la version publiee restent gardees (tests ci-dessus et dedies).
+  test('version DEJA UTILISEE -> ajout puis suppression de regle acceptes', async () => {
+    const used = (await db.admin.query(
+      "select field_key from public.template_field where template_version_id=$1 and type='text' order by display_order limit 2", [aliceVersionId])).rows;
+    const [{ id }] = await rowsAs(memberId, ADD_RULE + ' returning id', [aliceVersionId, JSON.stringify({ operator: 'equals', left_field: used[0].field_key, right_field: used[1].field_key }), 'm', 'warn']);
+    await rowsAs(memberId, 'delete from public.validation_rule where id=$1', [id]);
+    expect((await db.admin.query('select id from public.validation_rule where id=$1', [id])).rows).toHaveLength(0);
   });
 });
 
@@ -512,23 +519,28 @@ describe('edition d un champ : libelle libre, nom/type verrouilles si la variabl
     await expect(rowsAs(bobId, UPDATE, [fid, 'pirate', 'P', 'patient', 'clinique', 'text', false])).rejects.toThrow(/autoris/i);
   });
 
-  test('suppression d un champ : OK si vierge, REFUSEE si utilise (garde serveur)', async () => {
+  test('suppression d un champ : vierge, ou utilise avec valeurs retirees et journalisees', async () => {
     // Variable vierge -> suppression autorisee.
     const fOk = (await rowsAs(memberId, ADD_FIELD + ' returning id', [aliceVersionId, 'suppr_ok']))[0].id;
     await rowsAs(memberId, 'select public.delete_template_field($1)', [fOk]);
     expect((await db.admin.query('select id from public.template_field where id=$1', [fOk])).rows).toHaveLength(0);
 
-    // Variable utilisee par une donnee patient -> suppression refusee, champ conserve.
+    // Variable utilisee par une donnee patient (20261004170000) -> suppression acceptee : la
+    // valeur quitte la fiche et reste dans l'historique des corrections.
     const baseId = (await db.admin.query('select id from public.base where owner_user_id=$1', [memberId])).rows[0].id;
     const fUsed = (await db.asUser(memberId, (c) =>
       c.query("insert into public.template_field(template_version_id, field_key, label, scope, section, type) values($1,'suppr_used','U','patient','clinique','text') returning id", [aliceVersionId]),
     )).rows[0].id;
-    await db.admin.query(
-      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,$2,$3,$4)",
+    const patientId = (await db.admin.query(
+      "insert into public.patient(base_id, patient_code, template_version_id, data) values($1,$2,$3,$4) returning id",
       [baseId, 'P-DEL-' + Date.now(), aliceVersionId, JSON.stringify({ suppr_used: 'x' })],
-    );
-    await expect(rowsAs(memberId, 'select public.delete_template_field($1)', [fUsed])).rejects.toThrow(/utilis/i);
-    expect((await db.admin.query('select id from public.template_field where id=$1', [fUsed])).rows).toHaveLength(1);
+    )).rows[0].id;
+    await rowsAs(memberId, 'select public.delete_template_field($1)', [fUsed]);
+    expect((await db.admin.query('select id from public.template_field where id=$1', [fUsed])).rows).toHaveLength(0);
+    expect((await db.admin.query('select data from public.patient where id=$1', [patientId])).rows[0].data).not.toHaveProperty('suppr_used');
+    expect((await db.admin.query(
+      "select old_value, new_value, source from public.field_change_log where entity_id=$1 and field_key='suppr_used'", [patientId],
+    )).rows).toEqual([{ old_value: 'x', new_value: null, source: 'field_deletion' }]);
   });
 });
 

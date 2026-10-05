@@ -121,6 +121,26 @@ non vides, chaque couple existant dans `terminology_concept` avec `is_selectable
 publications conservées confondues, et **aucun code répété**. Les messages d'erreur nomment le
 libellé de la variable, jamais une valeur clinique.
 
+**ET-8 quinquies. Jeu de variables déjà utilisé** (`20261004170000`). Sur une version qui
+porte des dossiers, le responsable peut, en une transaction :
+
+- **renommer le nom interne** d'une variable renseignée : les valeurs suivent la clé
+  (dossiers, provenance, brouillons de curation, formulaires de saisie, colonnes affichées) ;
+  un dossier portant déjà le nouveau nom bloque tout (`FIELD_KEY_RENAME_CONFLICT`) ;
+- **supprimer** une variable renseignée : ses valeurs quittent les dossiers et chacune est
+  journalisée dans `field_change_log` (source `field_deletion`) ; une règle ou une formule qui
+  la cite bloque encore la suppression ;
+- **retirer une option** encore choisie : une option de remplacement active ou le vidage est
+  désigné pour chaque option portée (`p_option_replacements`, sinon
+  `OPTION_REPLACEMENT_REQUIRED`) ; chaque valeur changée est journalisée (`option_retirement`) ;
+- **ajouter, modifier ou supprimer des règles** : elles s'appliquent aux prochains
+  enregistrements, sans revalidation rétroactive des fiches.
+
+Sont concernés les dossiers de la version et ceux, plus anciens, d'une base dont elle est la
+version courante (valeurs de complément, et options de liste validées contre la définition
+courante). Type, cardinalité, portée, caractère requis, types de rencontre, bornes et formule
+restent figés ; une version publiée ou archivée reste immuable.
+
 ### 4.2 Diagramme
 
 Voir le diagramme ER complet dans [architecture.md §3](architecture.md).

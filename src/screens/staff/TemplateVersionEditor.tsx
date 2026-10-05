@@ -5,7 +5,7 @@ import { useI18n } from '../../i18n/useI18n';
 import { useTemplateRepository } from '../../data/RepositoryProvider';
 import type { TemplateRepository } from '../../data/templates';
 import type { MessageKey } from '../../i18n/messages';
-import type { NewField, TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
+import type { FieldUsage, NewField, TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import type { ObservationModel } from '../../data/bases';
 import { FieldForm } from './FieldForm';
 import { fieldOptions } from '../../domain/fieldOptions';
@@ -161,6 +161,33 @@ export function TemplateVersionEditor({
   const [leaving, setLeaving] = useState<(() => void) | null>(null);
   const [outOfFilter, setOutOfFilter] = useState<TemplateField | null>(null);
   const [deleting, setDeleting] = useState<TemplateField | null>(null);
+  // Variable deja utilisee : renommer, retirer une option ou supprimer reste possible, les
+  // valeurs des dossiers etant reecrites et journalisees cote serveur. L'ecran a besoin des
+  // COMPTES pour le dire ; sans eux (preparation de formulaire, depot de test), il garde les
+  // verrous d'origine.
+  const inUseEditsSupported = !preparationMode && typeof repo.fieldUsage === 'function';
+  const [editingUsage, setEditingUsage] = useState<FieldUsage | null>(null);
+  const [deletingUsage, setDeletingUsage] = useState<FieldUsage | null>(null);
+  // Une liste est lue meme sans dossier dans CETTE version : des dossiers plus anciens de la
+  // base peuvent porter ses options, et le serveur exige alors un remplacement.
+  const editingUsageId = inUseEditsSupported && editing
+    && (editing.inUse || editing.type === 'select' || editing.type === 'multiselect') ? editing.id : null;
+  const deletingUsageId = inUseEditsSupported && deleting ? deleting.id : null;
+  useEffect(() => {
+    setEditingUsage(null);
+    if (!editingUsageId) return;
+    let live = true;
+    // Un echec de lecture laisse simplement les verrous en place.
+    repo.fieldUsage!(editingUsageId).then((usage) => { if (live) setEditingUsage(usage); }, () => undefined);
+    return () => { live = false; };
+  }, [editingUsageId, repo]);
+  useEffect(() => {
+    setDeletingUsage(null);
+    if (!deletingUsageId) return;
+    let live = true;
+    repo.fieldUsage!(deletingUsageId).then((usage) => { if (live) setDeletingUsage(usage); }, () => undefined);
+    return () => { live = false; };
+  }, [deletingUsageId, repo]);
   // UX-14(d) : déplacement direct. Sur 216 lignes, glisser une variable traverse plusieurs
   // écrans et les flèches demandent autant de clics que de rangs franchis.
   const [moving, setMoving] = useState<TemplateField | null>(null);
@@ -1037,6 +1064,14 @@ export function TemplateVersionEditor({
                 <p className="mt-2 text-amber-800">{t('admin.delete_field_rules').replace('{n}', String(dependents.length))}</p>
               ) : null;
             })()}
+            {deletingUsage && deletingUsage.records > 0 && (
+              <p className="mt-2 text-amber-800">
+                {t('admin.delete_field_values').replace('{n}', String(deletingUsage.records))}
+              </p>
+            )}
+            {deletingUsageId && deleting.inUse && !deletingUsage && (
+              <p className="mt-2 text-slate-600">{t('admin.delete_field_values_loading')}</p>
+            )}
           </>
         ) : undefined}
         confirmLabel={t('admin.delete_field_confirm')}
@@ -1115,6 +1150,7 @@ export function TemplateVersionEditor({
           canReorder={displaySort === 'form' && !fieldFormOpen}
           onOpen={(field) => guardLeave(() => openFieldEditor(field))}
           onMove={setMoving} onStep={moveField} onDelete={setDeleting} onDrop={dropOn}
+          inUseDeletable={inUseEditsSupported}
           onRules={(field) => openContextRules(field ? { field: field.fieldKey } : { group: activeGroup })}
           ruleCount={(field) => ruleCountByFieldId.get(field.id) ?? 0}
           context={inheritedRules.map((rule) => <div key={rule.id} className="text-sm text-slate-600"><RuleSummary rule={rule.rule} fields={fields} sections={sections} /></div>)}
@@ -1204,6 +1240,7 @@ export function TemplateVersionEditor({
                       formula: editing.formula,
                     }}
                     lockStructural={editing.inUse ?? false}
+                    optionUsage={editingUsage?.options ?? null}
                     submitLabel={t('admin.save')}
                     submitAndNextLabel={t('admin.save_next')}
                     onCancel={() => guardLeave(closeFieldEditor)}
