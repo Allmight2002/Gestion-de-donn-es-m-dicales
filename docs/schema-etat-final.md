@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261004170000_form_preparation_group_attributes.sql`
-- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 434
+- Dernière migration incluse : `20261005010000_in_use_field_and_rule_edits.sql`
+- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 442
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1139,6 +1139,7 @@ Triggers :
 - `trg_template_field_formula_operand` — BEFORE UPDATE/DELETE → `enforce_template_field_formula_operand()`
 - `trg_template_field_formula_rules` — BEFORE INSERT/UPDATE → `enforce_template_field_formula_rules()`
 - `trg_template_field_key_rename_follows` — AFTER UPDATE → `follow_template_field_key_rename()`
+- `trg_template_field_key_rename_values` — AFTER UPDATE → `follow_template_field_key_rename_values()`
 - `trg_template_field_missing_reasons` — BEFORE INSERT/UPDATE → `enforce_template_field_missing_reasons()`
 - `trg_template_field_observation_model` — BEFORE INSERT/UPDATE → `enforce_observation_model_on_template_field()`
 - `trg_template_field_section` — BEFORE INSERT/UPDATE → `sync_template_field_section()`
@@ -1331,7 +1332,6 @@ Triggers :
 - `trg_template_version_invariants_rule_delete` — AFTER DELETE → `run_template_version_invariants_delete_statement()`
 - `trg_template_version_invariants_rule_insert` — AFTER INSERT → `run_template_version_invariants_insert_statement()`
 - `trg_template_version_invariants_rule_update` — AFTER UPDATE → `run_template_version_invariants_update_statement()`
-- `trg_vr_inuse` — BEFORE INSERT/UPDATE/DELETE → `guard_validation_rule_inuse()`
 - `trg_vr_locked` — BEFORE INSERT/UPDATE/DELETE → `guard_validation_rule_locked()`
 - `trg_vr_structure` — BEFORE INSERT/UPDATE → `guard_validation_rule_structure()`
 
@@ -1496,6 +1496,9 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | export_source_revision | p_cohort_id uuid | INVOKER | sql |
 | export_template_definition | p_version_id uuid | INVOKER | plpgsql |
 | extend_mission_access | p_access_id uuid, p_expires_at timestamp with time zone | DEFINER | plpgsql |
+| field_data_option_replaced | p_data jsonb, p_key text, p_replacements jsonb | INVOKER | plpgsql |
+| field_data_rewrite | p_data jsonb, p_op text, p_key text, p_new_key text, p_replacements jsonb | INVOKER | plpgsql |
+| field_value_has_option | p_value jsonb, p_key text | INVOKER | sql |
 | finalize_base_purge | p_operation_id uuid, p_manifest_hash text, p_actor_id uuid | DEFINER | plpgsql |
 | finalize_curation_task | p_task_id uuid | DEFINER | plpgsql |
 | finalize_patient | p_patient_id uuid | DEFINER | plpgsql |
@@ -1503,6 +1506,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | find_identity_matches | p_base_id uuid, p_full_name text, p_date_of_birth date | DEFINER | plpgsql |
 | fips_mode | — | INVOKER | c |
 | follow_template_field_key_rename | — | INVOKER | plpgsql |
+| follow_template_field_key_rename_values | — | DEFINER | plpgsql |
 | form_justification_status | p_base_id uuid, p_reason text | DEFINER | plpgsql |
 | form_preparation_apply_assert_definition | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
 | form_preparation_apply_classify | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
@@ -1590,7 +1594,6 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | guard_template_section_write | — | DEFINER | plpgsql |
 | guard_template_version_state | — | DEFINER | plpgsql |
 | guard_upload_ticket_attachment | — | DEFINER | plpgsql |
-| guard_validation_rule_inuse | — | INVOKER | plpgsql |
 | guard_validation_rule_locked | — | DEFINER | plpgsql |
 | guard_validation_rule_structure | — | INVOKER | plpgsql |
 | guard_xbase_clarification | — | DEFINER | plpgsql |
@@ -1723,6 +1726,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | revoke_base_access | p_access_id uuid | DEFINER | plpgsql |
 | revoke_base_invitation | p_invitation_id uuid | DEFINER | plpgsql |
 | revoke_mission_access | p_access_id uuid | DEFINER | plpgsql |
+| rewrite_curation_drafts_for_field | p_version_id uuid, p_scope text, p_op text, p_key text, p_new_key text, p_replacements jsonb | INVOKER | plpgsql |
 | rollback_verified_upload_operation | p_ticket_id uuid, p_user_id uuid, p_document_id uuid | DEFINER | plpgsql |
 | rule_apply_op | op text, a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_batch_error | p_code text, p_details jsonb | INVOKER | plpgsql |
@@ -1763,6 +1767,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | template_field_in_use | p_field_id uuid | DEFINER | sql |
 | template_field_option_keys | p_options jsonb | INVOKER | sql |
 | template_field_options_from_values | p_values jsonb, p_previous jsonb | INVOKER | sql |
+| template_field_usage | p_field_id uuid | DEFINER | plpgsql |
+| template_field_value_holders | p_version_id uuid, p_scope text, p_field_key text, p_include_shadowed boolean | INVOKER | sql |
 | template_import_refusal | p_code text, p_details jsonb | INVOKER | plpgsql |
 | template_of_version | p_version uuid | DEFINER | sql |
 | template_section_field_keys | p_version_id uuid, p_section_key text | INVOKER | sql |
@@ -1774,6 +1780,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | template_version_rule_fingerprint | p_version_id uuid | DEFINER | plpgsql |
 | terminology_entry_problem | p_entry jsonb | INVOKER | plpgsql |
 | terminology_normalize | p_text text | INVOKER | sql |
+| text_array_key_renamed | p_keys text[], p_old text, p_new text | INVOKER | sql |
 | touch_base_view_preference_updated_at | — | INVOKER | plpgsql |
 | trg_audit_access_fn | — | DEFINER | plpgsql |
 | trg_audit_export_fn | — | DEFINER | plpgsql |
@@ -1793,6 +1800,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_is_multiple boolean, p_missing_reasons text[], p_allowed_options jsonb, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_is_multiple boolean, p_missing_reasons text[], p_allowed_options jsonb, p_formula text, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
+| update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_is_multiple boolean, p_missing_reasons text[], p_allowed_options jsonb, p_formula text, p_option_replacements jsonb, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_allowed_options jsonb, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_default_value text, p_scope text, p_section text, p_type text, p_required boolean, p_missing_reasons text[], p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text | DEFINER | plpgsql |
 | update_template_field | p_field_id uuid, p_field_key text, p_label text, p_description text, p_scope text, p_section text, p_type text, p_required boolean, p_encounter_types text[], p_allowed_values jsonb, p_min_value numeric, p_max_value numeric, p_unit text, p_allow_missing_codes boolean | DEFINER | plpgsql |

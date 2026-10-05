@@ -75,9 +75,13 @@ describe('inventaire SECURITY DEFINER', () => {
     // +1 recherche globale : search_patient_ids. Code OU nom en un seul champ ; la partie
     // nominative traverse patient_identity (sans policy) apres role + permission, et ne rend
     // que des identifiants.
-    expect(signatures).toHaveLength(154);
+    // +2 jeu de variables deja utilise (20261005010000) : surcharge update_template_field
+    // portant p_option_replacements, et template_field_usage. Le retrait d'option doit
+    // reecrire, journaliser puis retirer en UNE transaction sous verrou de la variable ; la
+    // lecture d'usage ne rend que des comptes, au seul proprietaire du gabarit.
+    expect(signatures).toHaveLength(156);
     expect(serviceRoleSignatures).toHaveLength(12);
-    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(166);
+    expect(new Set([...signatures, ...serviceRoleSignatures]).size).toBe(168);
   });
 
   test('interdit anon, refuse les derives et fixe tous les search_path', async () => {

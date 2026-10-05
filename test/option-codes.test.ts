@@ -214,24 +214,27 @@ describe('variable deja utilisee', () => {
       .toEqual(['deces', 'gueri', 'sequelles', 'perdu_de_vue']);
   });
 
-  test('RETIRER une option est refuse', async () => {
+  // Depuis 20261005010000, la garde porte sur les VALEURS : une option portee par une fiche
+  // ne quitte la liste que par `update_template_field` avec un remplacement designe (voir
+  // test/in-use-field-edits.test.ts). Une ecriture directe reste refusee.
+  test('RETIRER une option encore portee, sans remplacement, est refuse', async () => {
     await expect(setOptions('l30_evolution', [
       { value_key: 'deces', label: 'Décès', is_active: true },
       { value_key: 'sequelles', label: 'Séquelles', is_active: true },
-    ])).rejects.toThrow(/ne peut plus etre retiree/i);
+    ])).rejects.toThrow(/OPTION_REPLACEMENT_REQUIRED/);
   });
 
-  test('CHANGER un code est refuse (c est un retrait deguise)', async () => {
+  test('CHANGER le code d une option portee est refuse (c est un retrait deguise)', async () => {
     await expect(setOptions('l30_evolution', [
       { value_key: 'gueri_v2', label: 'Guéri', is_active: true },
       { value_key: 'sequelles', label: 'Séquelles', is_active: true },
       { value_key: 'deces', label: 'Décès', is_active: true },
       { value_key: 'perdu_de_vue', label: 'Perdu de vue', is_active: true },
-    ])).rejects.toThrow(/ne peut plus etre retiree/i);
+    ])).rejects.toThrow(/OPTION_REPLACEMENT_REQUIRED/);
   });
 
   test('vider la liste d une variable en service est refuse', async () => {
-    await expect(setValues('l30_evolution', [])).rejects.toThrow(/ne peut plus etre retiree/i);
+    await expect(setValues('l30_evolution', [])).rejects.toThrow(/OPTION_REPLACEMENT_REQUIRED/);
   });
 
   test('sur une variable SANS donnee, retirer une option reste libre', async () => {

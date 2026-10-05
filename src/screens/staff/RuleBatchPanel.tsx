@@ -152,7 +152,9 @@ export function RuleBatchPanel({ versionId, source, fields, sections, repo, onCl
   const invalid = plan?.invalid ?? [];
   const toCreate = plan?.create ?? [];
   const duplicates = plan?.duplicates ?? [];
-  const frozen = plan?.locked || plan?.inUse;
+  // Une version deja utilisee accepte de nouvelles regles (20261005010000) : seule une
+  // version publiee ou archivee fige le lot.
+  const frozen = plan?.locked;
   const ready = !!plan && !checking && invalid.length === 0 && toCreate.length > 0 && !frozen;
 
   return (
@@ -289,7 +291,7 @@ export function RuleBatchPanel({ versionId, source, fields, sections, repo, onCl
                   </div>
                 )}
                 {plan?.locked && <p role="alert" className="text-xs text-amber-800">{t('rulebatch.locked')}</p>}
-                {plan?.inUse && <p role="alert" className="text-xs text-amber-800">{t('rulebatch.in_use')}</p>}
+                {plan?.inUse && !plan.locked && <p className="text-xs text-slate-600">{t('rulebatch.in_use')}</p>}
                 {plan && !checking && toCreate.length === 0 && duplicates.length > 0 && invalid.length === 0 && (
                   <p className="text-xs text-slate-600">{t('rulebatch.none')}</p>
                 )}

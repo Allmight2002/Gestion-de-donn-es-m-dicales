@@ -342,6 +342,9 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // les deux operandes de la grammaire fermee -- il ne l'evalue jamais.
       'template_section_import_plan',
       'update_template_field',
+      // 20261005010000 : surcharge p_option_replacements. Meme lecture que la surcharge L35 :
+      // la formule est recopiee et comparee pour la garde de comportement, jamais evaluee.
+      'update_template_field',
     ]);
   });
 
