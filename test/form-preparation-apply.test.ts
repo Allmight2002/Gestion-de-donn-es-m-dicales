@@ -292,6 +292,69 @@ function addCandidateChanges(definition: Definition): Definition {
   return payload;
 }
 
+// Ajoute à la source un groupe répétable racine portant une occurrence vivante chez le
+// patient de A : appliquer une préparation ne doit ni le refuser ni le rendre ordinaire.
+async function addRepeatableGroup(fixture: Fixture): Promise<void> {
+  await db.admin.query('begin');
+  try {
+    const sectionId = randomUUID();
+    await db.admin.query(`
+      insert into public.template_section(
+        id,template_version_id,section_key,label,display_order,is_repeatable,add_label,item_label
+      ) values($1,$2,'gestes','Gestes',5,true,'Ajouter un geste','Geste')
+    `, [sectionId, fixture.sourceVersionId]);
+    await db.admin.query(`
+      insert into public.template_field(
+        template_version_id,field_key,label,scope,section,section_id,type,required,allow_missing_codes,display_order
+      ) values($1,'geste','Geste','encounter','gestes',$2,'text',false,true,30)
+    `, [fixture.sourceVersionId, sectionId]);
+    const patientId = (await db.admin.query(
+      'select id from public.patient where base_id=$1', [fixture.baseAId],
+    )).rows[0].id;
+    await db.admin.query(`
+      insert into public.encounter(
+        patient_id,template_version_id,encounter_type,group_section_key,data,collection_mode,validation_status,created_by
+      ) values($1,$2,'autre','gestes','{"geste":"fictif"}'::jsonb,'direct','draft',$3)
+    `, [patientId, fixture.sourceVersionId, aliceId]);
+    await db.admin.query('commit');
+  } catch (error) {
+    await db.admin.query('rollback');
+    throw error;
+  }
+}
+
+function addFieldTo(sectionKey: string, scope: 'patient' | 'encounter', legacySections = false) {
+  return (definition: Definition): Definition => {
+    const payload = JSON.parse(JSON.stringify(definition)) as Definition;
+    // Une préparation antérieure à 20261004170000 ne portait pas les attributs de groupe.
+    if (legacySections) {
+      payload.sections = payload.sections.map(({ isRepeatable: _r, addLabel: _a, itemLabel: _i, ...rest }) => rest);
+    }
+    payload.fields.push({
+      fieldKey: `ajout_${randomUUID().slice(0, 8)}`,
+      label: 'Variable ajoutée',
+      scope,
+      sectionKey,
+      type: 'text',
+      unit: null,
+      allowedValues: null,
+      required: false,
+      minValue: null,
+      maxValue: null,
+      allowMissingCodes: true,
+      displayOrder: 40,
+      encounterTypes: null,
+      description: null,
+      defaultValue: null,
+      missingReasons: null,
+      allowedOptions: null,
+      isMultiple: false,
+      formula: null,
+    });
+    return payload;
+  };
+}
+
 async function prepare(fixture: Fixture, payloadBuilder = addCandidateChanges): Promise<SavedPreparation> {
   const context = await readContext(fixture);
   const payload = payloadBuilder(context.definition);
@@ -608,6 +671,58 @@ describe('E2 application atomique des préparations', () => {
     expect((await db.admin.query('select count(*) from public.template_version where derived_from_preparation_id=$1', [prepared.preparationId])).rows[0].count).toBe('0');
     expect((await db.admin.query('select count(*) from public.form_preparation_application where preparation_id=$1', [prepared.preparationId])).rows[0].count).toBe('0');
     expect((await db.admin.query('select state,payload from public.form_preparation where id=$1', [prepared.preparationId])).rows[0]).toMatchObject({ state: 'ready' });
+  }, 120_000);
+
+  test('conserve un groupe répétable utilisé lors de l’ajout d’une variable', async () => {
+    const fixture = await createFixture();
+    await addRepeatableGroup(fixture);
+    const context = await readContext(fixture);
+    expect(context.definition.sections.find((section) => section.sectionKey === 'gestes')).toMatchObject({
+      isRepeatable: true, addLabel: 'Ajouter un geste', itemLabel: 'Geste',
+    });
+    expect(context.definition.sections.find((section) => section.sectionKey === 'root')).not.toHaveProperty('isRepeatable');
+    const cases = [['child', 'patient', false], ['gestes', 'encounter', false], ['child', 'patient', true]] as const;
+    for (const [sectionKey, scope, legacySections] of cases) {
+      const base = (await db.admin.query('select current_template_version_id from public.base where id=$1', [fixture.baseAId])).rows[0];
+      const prepared = await prepare(fixture, addFieldTo(sectionKey, scope, legacySections));
+      const ready = await preview(prepared);
+      expect(ready.preparation.classification).toBe('additive');
+      const result = await apply(prepared);
+      expect(result.preparation.state).toBe('applied');
+      expect(result.application.sourceTemplateVersionId).toBe(base.current_template_version_id);
+      const group = (await db.admin.query(`
+        select is_repeatable,add_label,item_label,source_section_key from public.template_section
+         where template_version_id=$1 and section_key='gestes'
+      `, [result.application.targetTemplateVersionId])).rows[0];
+      expect(group).toEqual({
+        is_repeatable: true, add_label: 'Ajouter un geste', item_label: 'Geste', source_section_key: 'gestes',
+      });
+    }
+  }, 120_000);
+
+  test('un changement du caractère répétable d’un bloc existant reste sémantique', async () => {
+    const fixture = await createFixture();
+    await addRepeatableGroup(fixture);
+    const prepared = await prepare(fixture, (definition) => {
+      const payload = JSON.parse(JSON.stringify(definition)) as Definition;
+      payload.sections = payload.sections.map((section) => section.sectionKey === 'gestes'
+        ? { ...section, isRepeatable: false } : section);
+      return payload;
+    });
+    expect((await preview(prepared)).error).toBe('FORM_SEMANTIC_MIGRATION_REQUIRED');
+    expect((await apply(prepared)).error).toBe('FORM_SEMANTIC_MIGRATION_REQUIRED');
+  }, 120_000);
+
+  test('refuse explicitement une variable patient dans un groupe répétable', async () => {
+    const fixture = await createFixture();
+    await addRepeatableGroup(fixture);
+    const prepared = await prepare(fixture, addFieldTo('gestes', 'patient'));
+    await preview(prepared);
+    await expect(apply(prepared)).rejects.toThrow('FORM_CHANGE_UNSUPPORTED');
+    expect((await db.admin.query('select current_template_version_id from public.base where id=$1', [fixture.baseAId])).rows[0])
+      .toEqual({ current_template_version_id: fixture.sourceVersionId });
+    expect((await db.admin.query('select state from public.form_preparation where id=$1', [prepared.preparationId])).rows[0])
+      .toEqual({ state: 'ready' });
   }, 120_000);
 
   test('refuse les droits croisés et ferme les tables internes', async () => {

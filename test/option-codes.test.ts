@@ -214,7 +214,7 @@ describe('variable deja utilisee', () => {
       .toEqual(['deces', 'gueri', 'sequelles', 'perdu_de_vue']);
   });
 
-  // Depuis 20261004170000, la garde porte sur les VALEURS : une option portee par une fiche
+  // Depuis 20261005010000, la garde porte sur les VALEURS : une option portee par une fiche
   // ne quitte la liste que par `update_template_field` avec un remplacement designe (voir
   // test/in-use-field-edits.test.ts). Une ecriture directe reste refusee.
   test('RETIRER une option encore portee, sans remplacement, est refuse', async () => {

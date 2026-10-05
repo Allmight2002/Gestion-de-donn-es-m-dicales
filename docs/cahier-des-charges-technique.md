@@ -121,7 +121,7 @@ non vides, chaque couple existant dans `terminology_concept` avec `is_selectable
 publications conservées confondues, et **aucun code répété**. Les messages d'erreur nomment le
 libellé de la variable, jamais une valeur clinique.
 
-**ET-8 quinquies. Jeu de variables déjà utilisé** (`20261004170000`). Sur une version qui
+**ET-8 quinquies. Jeu de variables déjà utilisé** (`20261005010000`). Sur une version qui
 porte des dossiers, le responsable peut, en une transaction :
 
 - **renommer le nom interne** d'une variable renseignée : les valeurs suivent la clé

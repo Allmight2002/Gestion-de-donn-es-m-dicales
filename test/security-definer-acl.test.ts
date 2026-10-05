@@ -75,7 +75,7 @@ describe('inventaire SECURITY DEFINER', () => {
     // +1 recherche globale : search_patient_ids. Code OU nom en un seul champ ; la partie
     // nominative traverse patient_identity (sans policy) apres role + permission, et ne rend
     // que des identifiants.
-    // +2 jeu de variables deja utilise (20261004170000) : surcharge update_template_field
+    // +2 jeu de variables deja utilise (20261005010000) : surcharge update_template_field
     // portant p_option_replacements, et template_field_usage. Le retrait d'option doit
     // reecrire, journaliser puis retirer en UNE transaction sous verrou de la variable ; la
     // lecture d'usage ne rend que des comptes, au seul proprietaire du gabarit.

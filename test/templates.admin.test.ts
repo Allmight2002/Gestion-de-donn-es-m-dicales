@@ -315,7 +315,7 @@ describe('§8.3 regles de validation : versionnement + structure (cote serveur)'
     await expect(rowsAs(memberId, ADD_RULE, [freshVer, JSON.stringify({ foo: 'bar' }), 'm', 'block'])).rejects.toThrow(/structure/i);
   });
 
-  // 20261004170000 : une version deja utilisee accepte ajout, modification et suppression de
+  // 20261005010000 : une version deja utilisee accepte ajout, modification et suppression de
   // regles ; elles s'appliquent aux prochains enregistrements, sans revalidation retroactive.
   // La structure et la version publiee restent gardees (tests ci-dessus et dedies).
   test('version DEJA UTILISEE -> ajout puis suppression de regle acceptes', async () => {
@@ -525,7 +525,7 @@ describe('edition d un champ : libelle libre, nom/type verrouilles si la variabl
     await rowsAs(memberId, 'select public.delete_template_field($1)', [fOk]);
     expect((await db.admin.query('select id from public.template_field where id=$1', [fOk])).rows).toHaveLength(0);
 
-    // Variable utilisee par une donnee patient (20261004170000) -> suppression acceptee : la
+    // Variable utilisee par une donnee patient (20261005010000) -> suppression acceptee : la
     // valeur quitte la fiche et reste dans l'historique des corrections.
     const baseId = (await db.admin.query('select id from public.base where owner_user_id=$1', [memberId])).rows[0].id;
     const fUsed = (await db.asUser(memberId, (c) =>

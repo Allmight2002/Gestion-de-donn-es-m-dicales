@@ -152,7 +152,7 @@ export function RuleBatchPanel({ versionId, source, fields, sections, repo, onCl
   const invalid = plan?.invalid ?? [];
   const toCreate = plan?.create ?? [];
   const duplicates = plan?.duplicates ?? [];
-  // Une version deja utilisee accepte de nouvelles regles (20261004170000) : seule une
+  // Une version deja utilisee accepte de nouvelles regles (20261005010000) : seule une
   // version publiee ou archivee fige le lot.
   const frozen = plan?.locked;
   const ready = !!plan && !checking && invalid.length === 0 && toCreate.length > 0 && !frozen;

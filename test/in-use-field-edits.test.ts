@@ -1,4 +1,4 @@
-// Modifications d'un jeu de variables DEJA UTILISE (migration 20261004170000).
+// Modifications d'un jeu de variables DEJA UTILISE (migration 20261005010000).
 //
 // Decision produit : sur une version qui porte des dossiers, le responsable peut renommer la
 // cle d'une variable renseignee, la supprimer, retirer une option deja choisie, et gerer

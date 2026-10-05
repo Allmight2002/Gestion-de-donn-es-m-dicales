@@ -315,6 +315,57 @@ describe('E4 — payload de l’éditeur de préparation', () => {
     expect(patient).toEqual({ lateralite: 'gauche', grade: 'II' });
   }, 120_000);
 
+  test('l’éditeur affiche un groupe répétable et y ajoute une variable de rencontre', async () => {
+    const fixture = await createFixture();
+    const sectionId = randomUUID();
+    await db.admin.query(
+      `insert into public.template_section(id,template_version_id,section_key,label,display_order,is_repeatable,add_label,item_label)
+       values($1,$2,'gestes','Gestes',2,true,'Ajouter un geste','Geste')`,
+      [sectionId, fixture.versionId],
+    );
+    await db.admin.query(
+      `insert into public.template_field(template_version_id,field_key,label,scope,section,section_id,type,required,allow_missing_codes,display_order)
+       values($1,'geste','Geste','encounter','gestes',$2,'text',false,true,10)`,
+      [fixture.versionId, sectionId],
+    );
+    const patientId = (await db.admin.query('select id from public.patient where base_id=$1', [fixture.baseId])).rows[0].id;
+    await db.admin.query(
+      `insert into public.encounter(patient_id,template_version_id,encounter_type,group_section_key,data,collection_mode,validation_status,created_by)
+       values($1,$2,'autre','gestes','{"geste":"fictif"}'::jsonb,'direct','draft',$3)`,
+      [patientId, fixture.versionId, aliceId],
+    );
+
+    const context = await readContext(fixture);
+    const adapter = createPreparationTemplateRepository(editorSource(fixture), context.definition);
+    const shown = (await adapter.getVersion(fixture.versionId)).sections;
+    expect(shown.find((section) => section.sectionKey === 'gestes')).toMatchObject({
+      isRepeatable: true, addLabel: 'Ajouter un geste', itemLabel: 'Geste',
+    });
+    expect(shown.find((section) => section.sectionKey === 'clinique')).toMatchObject({ isRepeatable: false });
+
+    await adapter.addField(fixture.versionId, {
+      fieldKey: 'voie_abord', label: 'Voie d’abord', scope: 'encounter', section: 'gestes', type: 'text', required: false,
+    });
+    const session: Session = {
+      preparationId: randomUUID(),
+      sourceRevision: context.sourceRevision,
+      sourceFingerprint: context.sourceFingerprint,
+      revision: 0,
+    };
+    const { preview } = await saveAndPreview(session, fixture, adapter.getPreparationPayload());
+    expect(preview.preparation.classification).toBe('additive');
+    const applied = await rpc<Receipt>(
+      'select public.apply_form_preparation($1,$2,$3,$4,$5) as result',
+      [session.preparationId, session.revision, session.sourceRevision, session.sourceFingerprint, randomUUID()],
+    );
+    expect(applied.preparation.state).toBe('applied');
+    const group = (await db.admin.query(
+      `select is_repeatable from public.template_section where template_version_id=$1 and section_key='gestes'`,
+      [applied.application!.targetTemplateVersionId],
+    )).rows[0];
+    expect(group).toEqual({ is_repeatable: true });
+  }, 120_000);
+
   test('ajouter une variable par l’éditeur reste additif et l’application conserve la structure', async () => {
     const fixture = await createFixture();
     const context = await readContext(fixture);

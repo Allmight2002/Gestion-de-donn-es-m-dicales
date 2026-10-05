@@ -672,7 +672,7 @@ export function makeTemplateRepository(client: SupabaseClient | null): TemplateR
         // `p_formula` selectionne la surcharge L35 de la RPC. Sans cette cle, PostgREST
         // resout la signature anterieure et la variable reste saisie.
         p_formula: field.formula?.trim() || null,
-        // `p_option_replacements` selectionne la surcharge 20261004170000 : options retirees
+        // `p_option_replacements` selectionne la surcharge 20261005010000 : options retirees
         // d'une variable renseignee, remplacees ou videes dans la meme transaction.
         p_option_replacements: field.optionReplacements ?? {},
       });

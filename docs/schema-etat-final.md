@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261004170000_in_use_field_and_rule_edits.sql`
-- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 441
+- Dernière migration incluse : `20261005010000_in_use_field_and_rule_edits.sql`
+- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 442
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1516,6 +1516,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_preparation_assert_no_clinical_keys | p_value jsonb | DEFINER | plpgsql |
 | form_preparation_assert_owner | p_base_id uuid | DEFINER | plpgsql |
 | form_preparation_classify | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
+| form_preparation_classify_core | p_source jsonb, p_candidate jsonb | DEFINER | plpgsql |
 | form_preparation_error_json | p_code text, p_preparation_id uuid, p_operation_id uuid, p_retryable boolean | DEFINER | sql |
 | form_preparation_fingerprint | p_value jsonb | DEFINER | sql |
 | form_preparation_index_by_key | p_items jsonb, p_key text | INVOKER | sql |
