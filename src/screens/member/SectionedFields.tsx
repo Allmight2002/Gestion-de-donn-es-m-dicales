@@ -302,7 +302,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     // L75 D8 — une precision du pilote, pas un nouveau bloc : retrait leger et filet a gauche,
     // titre en petit gras, aucun encadre. Retrait reduit sur un ecran etroit.
     : <fieldset key={node.key} data-option-group={node.key}
-      className="min-w-0 space-y-5 border-l-2 border-slate-200 pl-2 @min-[28rem]:pl-4 dark:border-slate-700">
+      className="min-w-0 space-y-5 border-l-2 border-slate-300 pl-2 @min-[28rem]:pl-4 dark:border-slate-700">
       <legend className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{node.label}</legend>
       {renderNodes(node.children)}
     </fieldset>);
