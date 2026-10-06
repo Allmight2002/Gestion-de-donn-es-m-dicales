@@ -1,10 +1,10 @@
 # Spécification — En-têtes d'option pour les variables dépendantes d'une liste multiple
 
-- Statut : 📋 **spécifiée le 2026-10-06, non implémentée** — lot **L74**
+- Statut : 📋 **spécifiée le 2026-10-06, décisions arrêtées le même jour (§9), non implémentée** — lot **L74**
 - Nature : **présentation seule**. Aucune migration, aucune RPC, aucun changement de stockage,
   de validation, de complétude, d'export, de cohorte ni d'instantané hors-ligne
 - Surface web visée : `src/domain/templateSections.ts` (ou un module de domaine voisin),
-  `src/screens/member/SectionedFields.tsx`, `src/i18n/`
+  `src/screens/member/SectionedFields.tsx`
 - Hérite sans code propre : `EncounterFields`, `RepeatableGroup` (occurrence d'un groupe),
   `NewPatient`, `EditPatient`, `EditEncounter`, `CurationTask`, `FormPreview`
 - Périmètre autorisé : données fictives uniquement, comme le reste du produit
@@ -101,8 +101,9 @@ Toute autre variable reste **à sa place actuelle, sans en-tête**. En particuli
 ### 3.1 Règle à plusieurs codes
 
 Une règle `contains_any` peut porter plusieurs codes (`[infection, hemorragie]`). La cible est
-alors rattachée à un **en-tête combiné** : « Infection ou hémorragie », libellés dans l'ordre
-des options du pilote, joints par « ou ». La clé du regroupement est l'ensemble trié des codes ;
+alors rattachée à un **en-tête combiné** : « Infection / Hémorragie », libellés dans l'ordre
+des options du pilote, séparés par « / » (choix du porteur, §9). Le séparateur est neutre
+vis-à-vis de la langue : aucun libellé à traduire. La clé du regroupement est l'ensemble trié des codes ;
 deux cibles portant le même ensemble partagent le même en-tête.
 
 L'en-tête est **stable** : il ne dépend que de la règle, jamais des cases cochées. Une variable
@@ -178,7 +179,6 @@ Un seul lot, **L74**, côté web uniquement.
 |---|---|---|
 | Domaine | `src/domain/templateSections.ts` ou nouveau `src/domain/optionGroups.ts` | Fonction pure : `(fields d'un bloc, règles, champs du gabarit) → arbre ordonné { champ \| regroupement(en-tête, enfants) }` et sa liste aplatie pour la navigation |
 | Rendu | `src/screens/member/SectionedFields.tsx` | Rendu de l'arbre ; `nextMissing` / `nextToFill` sur la liste aplatie |
-| Libellés | `src/i18n/messages.fr.ts`, `messages.en.ts` | Conjonction « ou » / « or » de l'en-tête combiné |
 
 ## 8. Critères d'acceptation
 
@@ -188,7 +188,7 @@ Tests de domaine (fonction pure) :
    l'ordre des options du pilote, placés immédiatement après le pilote.
 2. Ordre d'affichage global entrelacé (Germe 3, Volume 4, Date 5, Reprise 6) : le rendu
    regroupe Germe + Date sous « Infection », Volume + Reprise sous « Hémorragie ».
-3. Règle `contains_any [infection, hemorragie]` : en-tête combiné « Infection ou Hémorragie »,
+3. Règle `contains_any [infection, hemorragie]` : en-tête combiné « Infection / Hémorragie »,
    placé après les regroupements à un code.
 4. Cible portant deux règles d'affichage : non rattachée, à sa place d'origine.
 5. Règle de bloc, pilote `select` simple, pilote `terminology`, comparaison numérique : rendu
@@ -210,10 +210,18 @@ Tests de composant :
 Vérifications : `npm run typecheck`, `npm run lint`, `npm run test:web` sur les fichiers touchés.
 Aucune migration, donc ni `npm run schema` ni suite `db` requise.
 
-## 9. Questions ouvertes
+## 9. Décisions du porteur du besoin — 2026-10-06
 
-Aucune bloquante. À confirmer par le porteur du besoin à la recette :
+| # | Question | Décision |
+|---|---|---|
+| D1 | Placement des variables dépendantes | **Déplacées juste sous la liste pilote**, dans l'ordre de ses options (§4). L'ordre configuré dans l'éditeur ne s'applique plus à ces variables lors de la saisie |
+| D2 | Règle déclenchée par plusieurs options | **En-tête combiné**, libellés séparés par **« / »** : « Infection / Hémorragie » (§3.1) |
+| D3 | Variable soumise à plusieurs règles d'affichage | **Pas d'en-tête**, la variable reste à sa place (§3) |
+| D4 | Types de pilotes | **Liste multiple seulement** en v1. Choix unique et diagnostics de nomenclature exclus (§3) |
+| D5 | Pilote et cible dans deux blocs | **Laisser en place**, sans en-tête (§3) |
+| D6 | Cascades | **Imbriquer** sous la variable pilote, à l'intérieur du groupe parent (§4.1) |
+| D7 | Signalement dans l'éditeur | **Aperçu seulement** (`FormPreview`), aucune indication dans la liste des variables (§6) |
+| D8 | Aspect visuel | **Retrait léger et filet vertical à gauche**, titre en petit gras, sans encadré (§5) |
 
-- l'étendre en v2 aux pilotes `terminology` à liste multiple (diagnostics), dont les libellés
-  viennent de la nomenclature ;
-- l'étendre au formulaire papier une fois PAP-1 réalisé.
+Extensions possibles, non retenues pour la v1 : pilotes `terminology` à liste multiple
+(diagnostics) et formulaire papier une fois PAP-1 réalisé.
