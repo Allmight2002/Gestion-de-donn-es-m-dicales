@@ -363,3 +363,87 @@ tout test qui écrit des données. Détail dans `meddata-release-check`.
 | D4 déborde et impose le repli (refus) | Moyenne | Estimer L74b en premier |
 | Durcissement D5 qui bloque des versions existantes | Moyenne | Refus à l'écriture seulement, test 11 |
 | Coût de la fusion dans les requêtes de complétude (une évaluation de visibilité par occurrence) | Faible à moyenne | `record_completion_summary` saute déjà l'évaluation quand la version n'a aucune règle `visible` ; mesurer sur le jeu de 402 variables / 238 règles de L73 |
+
+## 12. Estimation de L74b (effacement déclaré) — 6 octobre 2026
+
+**Verdict : faisable sans repli.** L72e a déjà construit presque toute la mécanique. L74b
+l'**étend** au lieu de la dupliquer, et l'option « refuser la modification » n'est pas
+nécessaire. Taille estimée : une migration d'environ 350 à 450 lignes, soit les deux tiers de
+L72e (631 lignes), et une retouche limitée de l'écran.
+
+### 12.1 Ce qui est réutilisé tel quel
+
+| Pièce existante (L72e, [20260924090000](../supabase/migrations/20260924090000_group_block_visibility_withdrawal.sql)) | Rôle dans L74b |
+|---|---|
+| Déclencheur `trg_patient_group_withdrawal` sur `patient.data` | Couvre **déjà tous** les chemins d'écriture de la fiche : `update_patient`, `update_patient_compatible`, import, curation, réparation des clés, brouillon de travail. Il suffit de lui faire calculer aussi les effacements |
+| Surcharges `update_patient(…, p_withdrawn_occurrences)` et `update_patient_compatible(…, p_withdrawn_occurrences)` | **Aucune nouvelle signature** : seul le contenu JSON de la déclaration s'enrichit. Pas de troisième famille de surcharges, pas d'ambiguïté PostgREST |
+| `patient_group_withdrawal_prepare` | Verrouille déjà la fiche (`for update`) puis **toutes** les occurrences vivantes du patient. Aucune occurrence ne peut être créée, corrigée ou supprimée pendant l'enregistrement : la concurrence est réglée |
+| `patient_group_withdrawal_commit` | Comparaison **exacte** déclaration / calcul serveur, conflit structuré sinon, tout ou rien |
+| `group_withdrawal_error` et codes `GROUP_WITHDRAWAL_*` | Mêmes codes, même classement côté écran (`EditPatient.tsx` gère déjà conflit et rechargement en préservant les saisies) |
+| `guard_base_version_group_withdrawal` | Un changement de version qui ferait apparaître des effacements est refusé avec des comptes, comme pour les blocs |
+| `pendingGroupWithdrawals` ([groupWithdrawal.ts](../src/domain/groupWithdrawal.ts)) et la confirmation d'`EditPatient` | La confirmation existe déjà ; elle ajoute une ligne par variable effacée |
+| Effacement journalisé de `delete_template_field` ([20261005010000](../supabase/migrations/20261005010000_in_use_field_and_rule_edits.sql)) | Précédent exact : journal **avant** effacement dans `field_change_log` avec une source dédiée, puis réécriture de `encounter.data` |
+
+### 12.2 Ce qui est à écrire
+
+**Serveur (migration additive) :**
+
+1. `patient_context_erasures(patient, version, ancienne fiche, nouvelle fiche)` : pour chaque
+   occurrence vivante **qui n'est pas retirée avec son bloc**, les variables de l'occurrence,
+   renseignées, masquées avec la nouvelle fiche et visibles avec l'ancienne (cascade comprise :
+   point fixe de `visibility_hidden_fields` sur `contexte ⊕ occurrence`). Rend identifiants,
+   révisions et clés, jamais de valeur.
+2. Déclaration enrichie : à côté de `occurrences` (retrait de bloc), une entrée
+   `clearedFields: [{id, recordRevision, fieldKeys}]` par groupe. Contrôle de forme dans
+   `prepare`, comparaison exacte dans `commit`.
+3. Application dans `commit`, **après** les suppressions douces de L72e : pour chaque
+   occurrence, journal `field_change_log` (ancienne valeur, nouvelle nulle, motif engendré qui
+   nomme la variable pilote par son **libellé**), puis retrait des clés de `encounter.data`.
+4. Nouvelle source `visibility_withdrawal` dans la contrainte `field_change_log_source_check`
+   (même procédé que `field_deletion` : suppression et recréation de la contrainte).
+5. `guard_patient_group_withdrawal` et `guard_base_version_group_withdrawal` : ajouter les
+   effacements au calcul ; le détail d'erreur porte `clearedFields`.
+
+**Web :**
+
+6. `pendingContextErasures` dans `groupWithdrawal.ts`, miroir du calcul serveur, et extension du
+   type `GroupWithdrawalDeclaration`.
+7. `EditPatient.tsx` : la confirmation annonce « 3 lésions perdront *Gradation AO* » et précise
+   que recocher le pilote ne restaure rien.
+
+### 12.3 Points à vérifier au démarrage de L74b
+
+| Point | Pourquoi | Piste |
+|---|---|---|
+| **Brouillons de curation** (`curation_draft.encounters`) | Ils gardent une copie des valeurs d'occurrence. Une finalisation ultérieure pourrait réécrire la valeur effacée, ou échouer sur une valeur masquée | Réécrire les brouillons concernés dans la même transaction, comme `rewrite_curation_drafts_for_field`, ou vérifier que la finalisation d'un brouillon périmé est déjà refusée |
+| **Occurrence ancienne ou incohérente** | L'effacement réécrit l'occurrence, donc rejoue tous ses contrôles d'écriture. Une occurrence devenue invalide pour une autre raison (changement de version) ferait échouer tout l'enregistrement de la fiche | Test dédié ; si le cas existe, message qui nomme l'occurrence bloquante plutôt qu'un refus opaque |
+| **Brouillons de travail** (`work_draft`, `encounter_update`) | Ils portent `entity_revision` | L'effacement fait avancer la révision : le brouillon périmé est déjà refusé comme conflit. À confirmer par test |
+| **Chemin `work.commit()` d'`EditPatient`** | Il n'envoie pas de déclaration (limite connue de L72e) | Le déclencheur le refuse (`GROUP_WITHDRAWAL_REQUIRED`) : rien n'est perdu, mais le message est générique. Inchangé par L74b |
+
+### 12.4 Ce qui ne pose pas de difficulté
+
+- **Hors ligne :** la fiche patient ne se modifie pas hors ligne (seules la création de patient
+  et les écritures de rencontre sont mises en file). Aucun effacement ne naît donc hors ligne.
+  Une correction d'occurrence mise en file avant un effacement est rejouée contre une révision
+  qui a avancé : `CONFLIT_VERSION`, déjà classé en conflit par `classifySyncError`, et la saisie
+  locale est conservée.
+- **Ancien client :** il envoie l'ancienne forme de déclaration. Le serveur refuse avec
+  `GROUP_WITHDRAWAL_REQUIRED`, que l'écran actuel traite déjà par un rechargement. Rien n'est
+  écrit à moitié.
+- **Coût :** au plus 50 occurrences par groupe, deux évaluations de visibilité par occurrence,
+  et seulement quand la fiche change **et** que le patient a des occurrences.
+
+### 12.5 Tests propres à L74b
+
+En plus du test 10 du §9 :
+
+- décocher un pilote qui masque à la fois un bloc (L72e) et des variables d'un autre groupe :
+  une seule déclaration, une seule transaction ;
+- une occurrence retirée avec son bloc n'apparaît **pas** dans les effacements ;
+- cascade : la variable effacée pilotait une autre variable de l'occurrence → les deux sont
+  déclarées et effacées ;
+- import, curation et changement de version qui provoqueraient un effacement → refus
+  structuré, rien n'est écrit ;
+- journal : une ligne `field_change_log` par variable effacée, source `visibility_withdrawal`,
+  aucun motif ne contient de valeur clinique ;
+- brouillon de curation et brouillon de travail après effacement : comportement retenu au §12.3.
