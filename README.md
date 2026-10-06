@@ -275,6 +275,10 @@ révocation), suppression logique. Côté `curateur` : pool de curation, structu
 réservé, clarifications, **finalisation**. Côté `saisisseur` : saisie bornée sur la base de
 mission, brouillons personnels, soumission sans droit de correction ultérieure.
 
+Les exports XLSX acceptent jusqu'à **16 384 colonnes par feuille**, avec un budget de
+**1 000 000 de cellules par classeur**. Un refus de volume indique la limite et le
+nombre observé pour permettre d'ajuster le périmètre de l'export.
+
 **Sous-systèmes ajoutés depuis le MVP** (tous documentés dans
 [docs/architecture.md](docs/architecture.md) §9) : **import** CSV/XLSX par lots (le client
 propose le mappage, le serveur valide et déduplique), **mode hors-ligne** (lecture et corrections

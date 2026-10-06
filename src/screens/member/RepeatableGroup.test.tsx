@@ -6,7 +6,7 @@ import type { Encounter, PatientRepository } from '../../data/patients';
 import type { TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 import { makeMissing } from '../../domain/validation';
 import { I18nProvider } from '../../i18n/I18nProvider';
-import { RepeatableGroup } from './RepeatableGroup';
+import { RepeatableGroup, RepeatableGroupTable } from './RepeatableGroup';
 
 const groupSection: TemplateSection = {
   id: 'section-lesions', sectionKey: 'lesions', label: 'Lésions', displayOrder: 1, isRepeatable: true,
@@ -173,6 +173,45 @@ afterEach(() => {
 });
 
 describe('RepeatableGroup — rendu (§14.2, point 13)', () => {
+  test.each([false, true])('masque les champs sans réponse en lecture (mobile : %s), mais conserve zéro, faux et les motifs', (mobile) => {
+    mockMatchMedia(mobile);
+    const fields = [
+      ...columns(4),
+      field({ fieldKey: 'zero', label: 'Zéro', type: 'integer' }),
+      field({ fieldKey: 'non', label: 'Non', type: 'boolean' }),
+      field({ fieldKey: 'motif', label: 'Motif', type: 'text' }),
+      field({ fieldKey: 'partiel', label: 'Partiel', type: 'text' }),
+    ];
+    const rows = [
+      occurrence('o1', { 'field-1': null, 'field-2': '', 'field-3': '  ', 'field-4': [], zero: 0, non: false, motif: makeMissing('non_fait') }),
+      occurrence('o2', { partiel: 'C5' }),
+    ];
+    const ui = (hideEmpty: boolean) => (
+      <I18nProvider>
+        <RepeatableGroupTable groupLabel="Lésions" columns={fields} rows={rows} hideEmpty={hideEmpty} />
+      </I18nProvider>
+    );
+    const { rerender } = render(ui(true));
+    expect(screen.queryByText('Colonne 1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Colonne 2')).not.toBeInTheDocument();
+    expect(screen.queryByText('Colonne 3')).not.toBeInTheDocument();
+    expect(screen.queryByText('Colonne 4')).not.toBeInTheDocument();
+    expect(screen.getByText('0')).toBeInTheDocument();
+    expect(screen.getByText('✗')).toBeInTheDocument();
+    expect(screen.getByText('Non fait')).toBeInTheDocument();
+    expect(screen.getByText('C5')).toBeInTheDocument();
+    if (mobile) {
+      expect(within(screen.getByRole('listitem', { name: 'Occurrence 1' })).queryByText(/Partiel/)).not.toBeInTheDocument();
+      expect(screen.queryByText('—')).not.toBeInTheDocument();
+    } else {
+      // Une colonne renseignée ailleurs garde ses cellules alignées.
+      expect(screen.getByRole('columnheader', { name: 'Partiel' })).toBeInTheDocument();
+      expect(screen.getAllByRole('row')).toHaveLength(3);
+    }
+    rerender(ui(false));
+    expect(screen.getAllByText(/Colonne 1/).length).toBeGreaterThan(0);
+  });
+
   test('rend le compte et l’invite sans tableau d’en-têtes vide', () => {
     renderGroup({ rows: [] });
 

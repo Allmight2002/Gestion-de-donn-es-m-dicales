@@ -2,7 +2,9 @@ import type { ExportTable } from './exportContract.ts';
 
 export const XLSX_EXPORT_LIMITS = {
   rowsPerSheet: 50_000,
-  columnsPerSheet: 256,
+  // XLSX accepte 16 384 colonnes ; 256 etait la limite de l'ancien format XLS.
+  // Le budget de cellules ci-dessous borne toujours le volume en memoire.
+  columnsPerSheet: 16_384,
   cellsPerWorkbook: 1_000_000,
   cellCharacters: 32_767,
   outputBytes: 64 * 1024 * 1024,

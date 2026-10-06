@@ -152,6 +152,27 @@ describe('L68 — le groupe repetable dans la fiche existante', () => {
     expect(screen.queryByRole('textbox', { name: 'Niveau' })).not.toBeInTheDocument();
   });
 
+  test('la fiche masque les colonnes vides du groupe et le bouton permet de les réafficher', async () => {
+    const user = userEvent.setup();
+    renderAt('/bases/b1/patients/p1', makePatients({
+      async listEncounters() {
+        return [occurrence('o1', 'C5', ''), occurrence('o2', 'T3', '')];
+      },
+    }));
+
+    const table = await screen.findByRole('table', { name: 'Occurrences de Lésions' });
+    expect(within(table).getByRole('columnheader', { name: 'Niveau' })).toBeInTheDocument();
+    expect(within(table).queryByRole('columnheader', { name: 'Morphologie' })).not.toBeInTheDocument();
+    expect(within(table).getAllByRole('row')).toHaveLength(3);
+
+    await user.click(screen.getByRole('button', { name: 'Afficher les champs vides (2)' }));
+    expect(within(table).getByRole('columnheader', { name: 'Morphologie' })).toBeInTheDocument();
+    expect(within(table).getAllByText('—')).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', { name: 'Masquer les champs vides' }));
+    expect(within(table).queryByRole('columnheader', { name: 'Morphologie' })).not.toBeInTheDocument();
+  });
+
   // §5, seconde branche — celle qu'on oublie. La retirer du RENDU ne suffit pas : restee
   // applicable, une variable requise de bloc répétable serait exigée sur une consultation
   // ordinaire sans être saisissable nulle part, et la rencontre deviendrait inenregistrable.

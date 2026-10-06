@@ -38,7 +38,12 @@ import {
   withExcelDateSerials,
 } from './exportContract.ts';
 import { parseExportRequest, readJsonObject, validationResponse } from '../_shared/contracts.ts';
-import { assertXlsxExportWithinLimits, assertXlsxGenerationTime, assertXlsxOutputSize } from './xlsxLimits.ts';
+import {
+  assertXlsxExportWithinLimits,
+  assertXlsxGenerationTime,
+  assertXlsxOutputSize,
+  XLSX_EXPORT_LIMITS,
+} from './xlsxLimits.ts';
 
 export interface GenerateExportDeps {
   buildClients: (authHeader: string) => { asUser: SupabaseClient; admin: SupabaseClient };
@@ -68,7 +73,8 @@ export const EXPORT_LIMITS = {
   definitionRevisions: 200,
   cells: 1_000_000,
   csvColumns: 1_000,
-  xlsxColumns: 256,
+  // XLSX accepte les formulaires larges ; le budget de cellules borne leur volume.
+  xlsxColumns: XLSX_EXPORT_LIMITS.columnsPerSheet,
 } as const;
 
 type CollectionFailureKind = 'read' | 'inconsistent' | 'limit' | 'changed';
@@ -189,9 +195,29 @@ function collectionFailureResponse(error: ExportCollectionError): Response {
     });
   }
   if (error.kind === 'limit') {
+    const labels: Record<string, string> = {
+      patients: 'patients',
+      encounters: 'rencontres',
+      encounter_parents: 'patients associés aux rencontres',
+      columns: 'colonnes',
+      cells: 'cellules',
+      dictionary_fields: 'variables du dictionnaire',
+      dictionary_sections: 'sections du dictionnaire',
+      dictionary_common_groups: 'rubriques du dictionnaire',
+      provenance: 'origines de valeur',
+      provenance_actors: 'auteurs de valeurs',
+      definition_revisions: 'révisions du formulaire',
+    };
+    const resource = labels[error.resource] ?? 'éléments';
+    const number = (value: number | undefined) => value?.toLocaleString('fr-FR') ?? '?';
+    const advice = error.resource === 'columns' || error.resource === 'cells'
+      ? 'Sélectionnez moins de blocs ou réduisez la population à exporter.'
+      : 'Réduisez la population ou le périmètre de l’export.';
     return json(413, {
       code: 'EXPORT_LIMIT_EXCEEDED',
-      error: 'Export refuse : limite maximale depassee',
+      error: `Export refusé : ${number(error.observed)} ${resource} pour une limite de ${
+        number(error.limit)
+      }. ${advice}`,
       resource: error.resource,
       limit: error.limit,
       observed: error.observed,

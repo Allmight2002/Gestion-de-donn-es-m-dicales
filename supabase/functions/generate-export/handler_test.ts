@@ -713,6 +713,10 @@ Deno.test('generate-export: limite produit depassee -> 413 explicite avant charg
   assertEquals(responseBody.resource, 'patients');
   assertEquals(responseBody.limit, EXPORT_LIMITS.patients);
   assertEquals(responseBody.observed, EXPORT_LIMITS.patients + 1);
+  assertStringIncludes(responseBody.error as string, 'patients');
+  assertStringIncludes(responseBody.error as string, '10\u202f001');
+  assertStringIncludes(responseBody.error as string, '10\u202f000');
+  assertStringIncludes(responseBody.error as string, 'Réduisez la population');
 });
 
 Deno.test('generate-export: les colonnes de code de terminologie comptent dans la limite CSV', async () => {
@@ -739,7 +743,63 @@ Deno.test('generate-export: les colonnes de code de terminologie comptent dans l
   assertEquals(responseBody.resource, 'columns');
   assertEquals(responseBody.limit, EXPORT_LIMITS.csvColumns);
   assertEquals(responseBody.observed, 7 + terminologyFields.length * 2);
+  assertStringIncludes(responseBody.error as string, 'colonnes');
+  assertStringIncludes(responseBody.error as string, 'Sélectionnez moins de blocs');
 });
+
+Deno.test('generate-export: XLSX de 591 variables et 13 patients conserve toutes les colonnes', async () => {
+  const fields = Array.from({ length: 591 }, (_, index) => ({
+    ...FIELDS[0],
+    id: `wide-${index.toString().padStart(3, '0')}`,
+    field_key: `variable_${index}`,
+    label: `Variable ${index}`,
+    display_order: index,
+  }));
+  const patients = Array.from({ length: 13 }, (_, index) => ({
+    id: `p${index.toString().padStart(2, '0')}`,
+    patient_code: `P${index}`,
+    template_version_id: TV,
+    data: {},
+  }));
+  const encounters = patients.map((patient, index) => ({
+    ...ENCOUNTER,
+    id: `e${index.toString().padStart(2, '0')}`,
+    patient_id: patient.id,
+    data: Object.fromEntries(fields.map((field, fieldIndex) => [field.field_key, index * 1_000 + fieldIndex])),
+  }));
+  let uploaded: Blob | null = null;
+  const d = deps({
+    fieldRows: fields,
+    memberRows: patients.map((patient) => ({ patient_id: patient.id })),
+    patientRows: patients,
+    encounterMemberRows: encounters.map((encounter) => ({ encounter_id: encounter.id })),
+    encounterRows: encounters,
+    onStorage: (method, args) => {
+      if (method === 'upload') uploaded = args[1] as Blob;
+    },
+  });
+  const { status } = await readResponse(await handleGenerateExport(makeRequest({ body: body('xlsx') }), d));
+  assertEquals(status, 200);
+  assert(uploaded);
+  const wb = XLSX.read(await (uploaded as Blob).arrayBuffer(), { type: 'array' });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets['Données'], { header: 1 }) as unknown[][];
+  assertEquals(rows.length, 14);
+  assertEquals(rows[0].length, 7 + fields.length);
+  // Toutes les valeurs, y compris la derniere colonne, survivent a la relecture du XLSX.
+  // L'ordre des lignes depend du code patient, pas de l'ordre de creation des fiches.
+  const values = rows.slice(1).map((row) => row.slice(7)) as number[][];
+  values.sort((left, right) => left[0] - right[0]);
+  assertEquals(values, patients.map((_, index) => fields.map((__, fieldIndex) => index * 1_000 + fieldIndex)));
+});
+
+for (const format of ['csv', 'xlsx'] as const) {
+  Deno.test(`generate-export: ${format} conserve les plafonds de colonnes et de cellules`, () => {
+    const columns = format === 'xlsx' ? EXPORT_LIMITS.xlsxColumns : EXPORT_LIMITS.csvColumns;
+    assertExportShapeWithinLimits(1, columns, format);
+    assertThrows(() => assertExportShapeWithinLimits(1, columns + 1, format));
+    assertThrows(() => assertExportShapeWithinLimits(1_000, 1_000, format));
+  });
+}
 
 Deno.test('generate-export: les cellules des feuilles multivaluees depassent proprement le plafond', () => {
   const longSheetCells = (Math.ceil(EXPORT_LIMITS.cells / 5) + 1) * 5;
