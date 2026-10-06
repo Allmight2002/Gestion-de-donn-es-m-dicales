@@ -467,7 +467,7 @@ doivent pas être pilotables par le navigateur seul. Détail complet :
 | `finalize-upload` | Valide hash/taille/MIME **après** commit | La preuve est recalculée côté serveur, avec compensation en cas d'échec partiel |
 | `cleanup-upload` | Reprend les tickets d'upload abandonnés | Idempotence et nettoyage hors session utilisateur |
 | `reconcile-quarantine` | Réconcilie les objets mis en quarantaine | Accès `service_role` au bucket isolé |
-| `generate-export` | Produit l'export d'une cohorte figée | Écarte les fiches auxquelles il manque un champ obligatoire (le statut de validation n'entre pas en compte), hash enregistré, rollback si la journalisation échoue |
+| `generate-export` | Produit l'export d'une cohorte figée | Écarte les fiches auxquelles il manque un champ obligatoire (le statut de validation n'entre pas en compte), hash enregistré, rollback si la journalisation échoue ; XLSX : 16 384 colonnes/feuille, 1 000 000 cellules/classeur |
 | `create-mission-account` | Crée, révèle, régénère ou révoque les justificatifs d'un `saisisseur` | Nécessite l'admin Auth et la clé de chiffrement Edge ; seul le propriétaire choisit l'identifiant et consulte le mot de passe généré |
 | `purge-deleted-base` | Prépare, supprime les objets Storage et finalise la purge immédiate d'une base de la corbeille | Le propriétaire est vérifié par RPC authentifiée ; le service seul finalise après manifeste, suppression vérifiée des quatre buckets et conservation de l'audit/journal d'export |
 
