@@ -139,6 +139,81 @@ describe('FieldForm — options a code stable (L30)', () => {
     expect(screen.getByText(/options désactivables, plus supprimables/)).toBeInTheDocument();
   });
 
+  describe('variable deja utilisee, comptes d usage connus (20261005010000)', () => {
+    function renderWithUsage(usage: Record<string, number>, onSubmit = vi.fn()) {
+      render(
+        <I18nProvider>
+          <FieldForm onSubmit={onSubmit} lockStructural optionUsage={usage} initial={listeEnService} submitLabel="Enregistrer" />
+        </I18nProvider>,
+      );
+      return onSubmit;
+    }
+
+    test('le nom interne devient modifiable et annonce que les valeurs suivent', async () => {
+      const onSubmit = renderWithUsage({ gueri: 2 });
+      const key = screen.getByLabelText('Clé technique');
+      expect(key).toBeEnabled();
+      await userEvent.clear(key);
+      await userEvent.type(key, 'evolution_finale');
+      expect(screen.getByText(/déplace les valeurs des dossiers/)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ fieldKey: 'evolution_finale' }), undefined);
+      expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('optionReplacements');
+    });
+
+    test('retirer une option portee exige un remplacement avant tout envoi', async () => {
+      const onSubmit = renderWithUsage({ gueri: 2 });
+      await userEvent.click(screen.getByRole('button', { name: 'Supprimer Gueri' }));
+      expect(screen.getByText('« Gueri » · 2 dossier(s)')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(/Choisissez un remplacement/);
+
+      await userEvent.selectOptions(screen.getByLabelText('Remplacer « Gueri » par'), 'deces');
+      await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        allowedValues: ['deces'],
+        optionReplacements: { gueri: 'deces' },
+      }), undefined);
+    });
+
+    test('vider est un choix explicite ; une option non portee se retire sans question', async () => {
+      const onSubmit = renderWithUsage({ gueri: 1 });
+      await userEvent.click(screen.getByRole('button', { name: 'Supprimer Décès' }));
+      expect(screen.queryByText(/Options retirées encore choisies/)).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: 'Supprimer Gueri' }));
+      await userEvent.selectOptions(screen.getByLabelText('Remplacer « Gueri » par'), 'Vider la valeur');
+      await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        allowedValues: null,
+        optionReplacements: { gueri: null },
+      }), undefined);
+    });
+
+    test('sans dossier dans cette version, une option portee par des dossiers anciens exige aussi un remplacement', async () => {
+      const onSubmit = vi.fn();
+      render(
+        <I18nProvider>
+          <FieldForm onSubmit={onSubmit} optionUsage={{ deces: 4 }} initial={listeEnService} submitLabel="Enregistrer" />
+        </I18nProvider>,
+      );
+      expect(screen.getByLabelText('Clé technique')).toBeEnabled();
+      await userEvent.click(screen.getByRole('button', { name: 'Supprimer Décès' }));
+      await userEvent.selectOptions(screen.getByLabelText('Remplacer « Décès » par'), 'gueri');
+      await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ optionReplacements: { deces: 'gueri' } }), undefined);
+    });
+
+    test('retablir une option retiree annule le remplacement', async () => {
+      const onSubmit = renderWithUsage({ gueri: 3 });
+      await userEvent.click(screen.getByRole('button', { name: 'Supprimer Gueri' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Rétablir' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('optionReplacements');
+    });
+  });
+
   test('desactiver une option la transmet sans la retirer de la liste', async () => {
     const onSubmit = renderExisting();
     await userEvent.click(screen.getAllByLabelText('Désactiver')[1]);

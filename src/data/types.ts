@@ -377,6 +377,20 @@ export interface NewField {
   missingReasons?: MissingCode[] | null;
   /** Calcul defini par l'utilisateur (L35), forme canonique « A op B ». Null = variable saisie. */
   formula?: string | null;
+  /**
+   * Options retirees d'une variable deja renseignee : code retire -> code de remplacement,
+   * ou null pour vider la valeur. Le serveur exige une designation pour chaque option retiree
+   * encore portee par un dossier, et journalise chaque valeur changee.
+   */
+  optionReplacements?: Record<string, string | null> | null;
+}
+
+/** Comptes de dossiers portant une valeur pour une variable (aucune valeur ni identifiant). */
+export interface FieldUsage {
+  /** Dossiers dont la valeur serait retiree par une suppression. */
+  records: number;
+  /** Dossiers portant chaque option de liste, par code. */
+  options: Record<string, number>;
 }
 
 // --- L59 : import d'un bloc reutilisable ---------------------------------------------------

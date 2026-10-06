@@ -47,6 +47,13 @@ export type OccurrenceColumn = {
   allowedOptions?: unknown;
 };
 
+/** Une absence de réponse ; zéro, faux et les motifs de donnée manquante restent visibles. */
+export function isEmptyOccurrenceValue(value: unknown): boolean {
+  return value === null || value === undefined
+    || (typeof value === 'string' && value.trim() === '')
+    || (Array.isArray(value) && value.length === 0);
+}
+
 /**
  * Rendu d'une valeur d'occurrence, comme partout ailleurs hors saisie (§8.1) : le libelle d'une
  * option et non son code, un diagnostic et non `[object Object]`, et le motif d'une donnee
@@ -68,7 +75,7 @@ function useCellText() {
  * action ; l'ecran de correction lui passe les actions de ligne.
  */
 export function RepeatableGroupTable({
-  groupLabel, rankLabel, columns, rows, loading = false, rowActions, rowNotice,
+  groupLabel, rankLabel, columns, rows, loading = false, rowActions, rowNotice, hideEmpty = false,
 }: {
   groupLabel: string;
   /** Titre d'une ligne (« Lesion 2 ») ; `rank` commence a 1. Absent : « Occurrence n ». */
@@ -76,6 +83,8 @@ export function RepeatableGroupTable({
   columns: readonly OccurrenceColumn[];
   rows: readonly Encounter[];
   loading?: boolean;
+  /** La fiche masque les champs vides ; la correction garde toutes les variables. */
+  hideEmpty?: boolean;
   /** Actions propres a une ligne. Absentes = lecture seule (role, hors-ligne, fiche curee). */
   rowActions?: (row: Encounter, index: number) => ReactNode;
   /** Bandeau porte par UNE ligne — un conflit de version n'en bloque aucune autre (§8.2). */
@@ -84,7 +93,10 @@ export function RepeatableGroupTable({
   const { t } = useI18n();
   const cellText = useCellText();
   const narrow = useNarrowViewport();
-  const asCards = narrow || columns.length > MAX_TABLE_COLUMNS;
+  const visibleColumns = hideEmpty && !loading
+    ? columns.filter((column) => rows.some((row) => !isEmptyOccurrenceValue(row.data[column.fieldKey])))
+    : columns;
+  const asCards = narrow || visibleColumns.length > MAX_TABLE_COLUMNS;
   const rankOf = (index: number) => rankLabel?.(index + 1)
     ?? t('form.repeatable_occurrence').replace('{n}', String(index + 1));
 
@@ -96,12 +108,12 @@ export function RepeatableGroupTable({
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               <th scope="col" className="px-2 py-1">{t('form.repeatable_rank')}</th>
-              {columns.map((column) => <th key={column.fieldKey} scope="col" className="px-2 py-1">{column.label}</th>)}
+              {visibleColumns.map((column) => <th key={column.fieldKey} scope="col" className="px-2 py-1">{column.label}</th>)}
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td colSpan={columns.length + 1} className="px-2 py-2">
+              <td colSpan={visibleColumns.length + 1} className="px-2 py-2">
                 <span role="status" className="text-sm text-slate-500">{t('form.repeatable_loading')}</span>
               </td>
             </tr>
@@ -121,7 +133,7 @@ export function RepeatableGroupTable({
           <li key={row.id} aria-label={rankOf(index)} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{rankOf(index)}</p>
             <dl className="mt-2 space-y-1 text-sm">
-              {columns.map((column) => (
+              {visibleColumns.filter((column) => !hideEmpty || !isEmptyOccurrenceValue(row.data[column.fieldKey])).map((column) => (
                 <div key={column.fieldKey} className="flex flex-wrap gap-x-2">
                   <dt className="min-w-0 max-w-full break-words text-slate-500 dark:text-slate-400">{column.label}{column.unit ? ` (${column.unit})` : ''} :</dt>
                   <dd className="min-w-0 max-w-full break-words text-slate-900 dark:text-slate-100">{cellText(row.data[column.fieldKey], column)}</dd>
@@ -144,7 +156,7 @@ export function RepeatableGroupTable({
         <thead>
           <tr className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
             <th scope="col" className="px-2 py-1">{t('form.repeatable_rank')}</th>
-            {columns.map((column) => (
+            {visibleColumns.map((column) => (
               <th key={column.fieldKey} scope="col" className="px-2 py-1">
                 {column.label}{column.unit ? <span className="text-slate-400"> ({column.unit})</span> : null}
               </th>
@@ -156,7 +168,7 @@ export function RepeatableGroupTable({
           {rows.map((row, index) => (
             <tr key={row.id} className="border-t border-slate-100 align-top dark:border-slate-800">
               <th scope="row" className="px-2 py-2 text-left font-normal text-slate-500 tabular-nums dark:text-slate-400">{index + 1}</th>
-              {columns.map((column) => (
+              {visibleColumns.map((column) => (
                 <td key={column.fieldKey} className="px-2 py-2 text-slate-900 dark:text-slate-100">
                   {cellText(row.data[column.fieldKey], column)}
                 </td>

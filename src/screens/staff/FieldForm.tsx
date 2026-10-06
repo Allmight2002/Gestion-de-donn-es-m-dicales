@@ -59,6 +59,7 @@ export function FieldForm({
   fields = [],
   onDirtyChange,
   defaultSection,
+  optionUsage = null,
   }: {
   /** `companion` : champ compagnon « valeur proposée » à créer juste après le champ source. */
   onSubmit: (f: NewField, companion?: NewField) => void | boolean | Promise<void | boolean>;
@@ -89,6 +90,13 @@ export function FieldForm({
   onDirtyChange?: (dirty: boolean) => void;
   /** Creation starts in the selected clinical section, or remains semantically common. */
   defaultSection?: FieldSection;
+  /**
+   * Nombre de dossiers portant chaque option (edition seulement). Fourni, il deverrouille le
+   * retrait d'option avec choix d'un remplacement pour chaque option retiree encore portee,
+   * et, sur une variable deja utilisee, le nom interne (les valeurs suivent cote serveur).
+   * Absent : verrous d'origine.
+   */
+  optionUsage?: Record<string, number> | null;
 }) {
   const { t } = useI18n();
   const editing = !!initial;
@@ -117,6 +125,13 @@ export function FieldForm({
   // `fieldOptions` retombe sur l'ancienne liste de chaines quand la variable est
   // anterieure au lot -- cle = libelle, exactement le comportement d'avant.
   const [options, setOptions] = useState<FieldOption[]>(() => fieldOptions(initial));
+  // Variable deja utilisee, comptes connus : nom interne et retrait d'option deverrouilles.
+  const inUseEdits = lockStructural && optionUsage !== null;
+  // Comptes connus, variable utilisee ou non : une option retiree encore portee par un dossier
+  // (de cette version ou d'une plus ancienne) exige un remplacement.
+  const usageKnown = editing && optionUsage !== null;
+  const [replacements, setReplacements] = useState<Record<string, string | null | undefined>>({});
+  const [replacementError, setReplacementError] = useState(false);
   const [valueSetId, setValueSetId] = useState('');
   const [withProposal, setWithProposal] = useState(false);
   const [minValue, setMinValue] = useState(initial?.minValue != null ? String(initial.minValue) : '');
@@ -162,7 +177,7 @@ export function FieldForm({
     fieldKey, label, description, scope, section, type, required, isMultiple, encounterTypes,
     options, withProposal, minValue, maxValue, unit, allowMissingCodes, missingReasons,
     defaultValue, calculated, leftOperand, leftLiteral, formulaOperator, rightOperand,
-    rightLiteral, formulaUnit,
+    rightLiteral, formulaUnit, replacements,
   ]);
   const initialFingerprint = useRef(fingerprint);
   const notifyDirty = useRef(onDirtyChange);
@@ -172,6 +187,22 @@ export function FieldForm({
   }, [fingerprint]);
 
   const isChoice = type === 'select' || type === 'multiselect';
+  // Options d'origine retirees de la liste alors que des dossiers les portent encore.
+  const retiredOptions = usageKnown && isChoice
+    ? fieldOptions(initial)
+      .filter((o) => !options.some((kept) => kept.valueKey === o.valueKey) && (optionUsage?.[o.valueKey] ?? 0) > 0)
+      .map((option) => ({ option, records: optionUsage?.[option.valueKey] ?? 0 }))
+    : [];
+  // Un remplacement ne vaut que vers une option ACTIVE encore dans la liste.
+  const replacementFor = (key: string) => {
+    const choice = replacements[key];
+    if (choice === null) return null;
+    return choice !== undefined && options.some((o) => o.valueKey === choice && o.isActive) ? choice : undefined;
+  };
+  const missingReplacement = retiredOptions.some(({ option }) => replacementFor(option.valueKey) === undefined);
+  const optionReplacements = retiredOptions.length > 0
+    ? Object.fromEntries(retiredOptions.map(({ option }) => [option.valueKey, replacementFor(option.valueKey) ?? null]))
+    : null;
   // La soupape suit desormais le TYPE, plus la portee. La restriction « rencontre seulement »
   // datait du temps ou la saisie couplee n'existait que sur les ecrans de rencontre ; L4 a
   // porte `ChoiceWithProposal` sur les donnees permanentes (NewPatient, EditPatient) sans lever
@@ -269,6 +300,12 @@ export function FieldForm({
   async function submit(e?: FormEvent, advance = false) {
     e?.preventDefault();
     if (!fieldKey.trim() || !label.trim()) return;
+    // Une option retiree encore portee par des dossiers part avec son remplacement : sans
+    // choix explicite, rien n'est envoye (le serveur refuserait aussi).
+    if (missingReplacement) {
+      setReplacementError(true);
+      return;
+    }
     // Une formule incomplete ou refusee n'est jamais envoyee : le motif est deja affiche.
     if (calculated && !formulaCheck.ok) return;
     const listed = isChoice && options.length > 0 ? options : null;
@@ -315,6 +352,7 @@ export function FieldForm({
       allowMissingCodes: effectiveMissingReasons.length > 0,
       missingReasons: effectiveMissingReasons,
       defaultValue: allowsDefault && trimmedDefault ? trimmedDefault : null,
+      ...(optionReplacements ? { optionReplacements } : {}),
     };
     const wantsProposal = supportsProposal && withProposal && !editing;
     const save = advance ? (onSubmitAndNext ?? onSubmit) : onSubmit;
@@ -363,9 +401,12 @@ export function FieldForm({
           className={inputCls}
           value={fieldKey}
           onChange={(e) => setFieldKey(e.target.value)}
-          disabled={lockStructural}
+          disabled={lockStructural && !inUseEdits}
           required
         />
+        {inUseEdits && fieldKey.trim() !== (initial?.fieldKey ?? '') && (
+          <span className="helper-text">{t('admin.field_key_in_use_hint')}</span>
+        )}
       </label>
       <label htmlFor="field-description" className="form-label sm:col-span-2">
         {t('admin.field_description')}
@@ -567,7 +608,18 @@ export function FieldForm({
           <summary className="cursor-pointer text-sm font-semibold text-slate-700">{t('admin.options_category')}</summary>
           <fieldset className="mt-3 flex flex-col gap-3">
             <legend className="sr-only">{t('admin.options')}</legend>
-            <OptionsEditor options={options} onChange={setOptions} locked={lockStructural} />
+            <OptionsEditor
+              options={options}
+              onChange={setOptions}
+              locked={lockStructural && optionUsage === null}
+              retired={retiredOptions}
+              replacements={replacements}
+              onReplacementChange={(key, value) => {
+                setReplacements((prev) => ({ ...prev, [key]: value }));
+                setReplacementError(false);
+              }}
+              showReplacementError={replacementError}
+            />
             <div className="flex flex-wrap items-end gap-2">
             <label className="form-label">
               {t('admin.value_set')}

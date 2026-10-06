@@ -71,6 +71,7 @@ export function editorGroups(
 
 export function EditorStructure({ groups, activeKey, onSelect, displayedFields, allFields, editable, busy,
   canReorder, onOpen, onMove, onStep, onDelete, onDrop, onRules, ruleCount, context, narrow = false,
+  inUseDeletable = false,
 }: {
   groups: EditorGroup[]; activeKey: string; onSelect: (key: string) => void;
   displayedFields: TemplateField[]; allFields: TemplateField[]; editable: boolean; busy: boolean;
@@ -82,6 +83,9 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
   /** Audit UI mobile, lot 6 (5.13-A) : sous 768 px, sommaire en panneau bas, actions de ligne
    *  dans « ⋯ » et fleches reservees au mode « Réorganiser ». */
   narrow?: boolean;
+  /** Une variable deja renseignee peut etre supprimee : ses valeurs sont retirees et
+   *  journalisees cote serveur, la confirmation annonce le nombre de dossiers concernes. */
+  inUseDeletable?: boolean;
 }) {
   const { t } = useI18n();
   // A largeur etroite, le sommaire passe AU-DESSUS de la liste : le laisser deroule imposerait
@@ -315,7 +319,7 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
                 <div role="cell" className={narrow ? 'flex items-center justify-end gap-0.5' : 'flex max-w-[5.5rem] flex-wrap items-center gap-0.5 sm:max-w-none sm:flex-nowrap sm:gap-1'}>
                   {editable && (!narrow ? <>
                     {stepButtons(field, index)}
-                    <button type="button" className="icon-button text-red-600" disabled={busy || field.inUse} aria-label={`${t('admin.delete')} · ${field.label}`} title={field.inUse ? t('admin.field_locked_hint') : t('admin.delete')} onClick={() => onDelete(field)}><Trash2 size={16} aria-hidden /></button>
+                    <button type="button" className="icon-button text-red-600" disabled={busy || (field.inUse && !inUseDeletable)} aria-label={`${t('admin.delete')} · ${field.label}`} title={field.inUse && !inUseDeletable ? t('admin.field_locked_hint') : t('admin.delete')} onClick={() => onDelete(field)}><Trash2 size={16} aria-hidden /></button>
                   </> : reorderMode ? stepButtons(field, index) : (
                     <Menu
                       triggerLabel={`${t('common.actions')} · ${field.label}`}
@@ -326,11 +330,11 @@ export function EditorStructure({ groups, activeKey, onSelect, displayedFields, 
                       <MenuItem onSelect={() => onMove(field)} disabled={busy || !canReorder}>
                         <MoveVertical size={16} aria-hidden /> {t('admin.move_variable')}
                       </MenuItem>
-                      <MenuItem onSelect={() => onDelete(field)} disabled={busy || field.inUse}
+                      <MenuItem onSelect={() => onDelete(field)} disabled={busy || (field.inUse && !inUseDeletable)}
                         className="btn-ghost w-full justify-start text-red-600">
                         <Trash2 size={16} aria-hidden /> {t('admin.delete')}
                       </MenuItem>
-                      {field.inUse && <p className="px-3 pb-1 text-xs text-slate-500">{t('admin.field_locked_hint')}</p>}
+                      {field.inUse && !inUseDeletable && <p className="px-3 pb-1 text-xs text-slate-500">{t('admin.field_locked_hint')}</p>}
                     </Menu>
                   ))}
                 </div>
