@@ -1,6 +1,6 @@
-# L74 — Variables permanentes comme contexte des occurrences de groupe répétable
+# L74 — Variables permanentes comme contexte d'affichage des occurrences de groupe répétable
 
-- Statut : 📋 **cadré le 6 octobre 2026, non arbitré, non implémenté**
+- Statut : 📋 **cadré le 6 octobre 2026, arbitré le 6 octobre 2026, non implémenté**
 - Prérequis : L66 à L72 fusionnés (groupes répétables, groupe en sous-section, retrait de bloc)
 - Surface serveur visée : `assert_rule_structure`, `assert_curated_complete` (branche rencontre),
   `guard_group_occurrence_block_visible`, fonctions de complétude (`missing_required_fields` et
@@ -11,14 +11,28 @@
 
 ---
 
+> **Arbitrages du porteur du besoin, 6 octobre 2026.**
+>
+> - **D1 — Occurrences de groupe seules.** Les rencontres ordinaires gardent leur sémantique
+>   actuelle. Une extension aux visites ferait l'objet d'un lot séparé.
+> - **D2 — Affichage seulement.** Une variable permanente peut commander l'**affichage** d'une
+>   variable de groupe, et rien d'autre : ni obligation, ni comparaison.
+> - **D3 — Sans objet.** Le contexte ne servant qu'à la visibilité, les règles `required` et de
+>   comparaison inter-fiches déjà enregistrées restent inertes, comme aujourd'hui. Aucune
+>   occurrence ne change de statut et aucun audit préalable n'est nécessaire.
+> - **D4 — Effacement déclaré, atomique.** Décocher un pilote annonce les valeurs d'occurrences
+>   qui seront effacées, puis les efface dans la même transaction que la fiche.
+> - **D5 — Retenue.** Les règles qui ne peuvent jamais fonctionner sont refusées **à leur
+>   écriture** ; celles qui existent déjà sont signalées, jamais bloquées.
+
 ## 1. Besoin
 
 La fluidité de saisie repose sur les règles d'affichage. Le cas clinique qui bloque est le
-suivant : **montrer ou exiger une variable d'occurrence selon une variable permanente du
-patient**. Exemples :
+suivant : **montrer une variable d'occurrence selon une variable permanente du patient**.
+Exemples :
 
 - n'afficher la gradation AO Spine d'une lésion que si le patient a un diagnostic de trauma ;
-- exiger le côté d'une lésion que si la pathologie du patient est latéralisée ;
+- n'afficher le côté d'une lésion que si la pathologie du patient est latéralisée ;
 - ne proposer le type de matériel dans une occurrence « intervention » que si le patient est
   opéré.
 
@@ -55,127 +69,137 @@ rencontre ordinaire sont deux fiches différentes, et il ne s'applique pas à `r
 |---|---|---|
 | P1 | `visible` : variable de rencontre ordinaire → variable de groupe | Cible **toujours masquée** dans l'occurrence |
 | P2 | `visible` : variable de groupe → variable de rencontre ordinaire (ou d'un autre groupe) | Cible **toujours masquée** sur la rencontre |
-| P3 | `required` : variable permanente → variable de groupe ou de rencontre | Ne se déclenche **jamais** (`rule_holds` : pilote absent → respectée) |
-| P4 | Comparaison entre une variable permanente et une variable de rencontre | Jamais évaluée (opérande absent → respectée) |
+| P3 | `required` entre deux espaces différents (ex. permanent → groupe) | Ne se déclenche **jamais** (`rule_holds` : pilote absent → respectée) |
+| P4 | Comparaison entre deux espaces différents | Jamais évaluée (opérande absent → respectée) |
 | P5 | Bloc racine piloté par une variable de **rencontre** et portant un groupe enfant | Groupe **toujours masqué** : `repeatable_group_root_visible` lit `patient.data` (déduit de la lecture, non testé) |
+
+Après L74, P3 et P4 restent dormantes (D2, D3) ; D5 empêche d'en créer de nouvelles.
 
 Côté écran, `rulesForRepeatableSection` ([templateSections.ts:472](../src/domain/templateSections.ts))
 était prévue pour écarter les règles inter-fiches d'une occurrence. **Aucun appelant ne
 l'utilise** : l'occurrence reçoit toutes les règles actives. Le serveur et l'écran restent
 cohérents entre eux (les deux masquent), mais rien ne prévient le concepteur.
 
-## 3. Principe retenu : le contexte patient en lecture seule
+## 3. Principe retenu : le contexte patient, pour la visibilité seulement
 
-> **Une occurrence s'évalue sur `contexte ⊕ occurrence`**, où le contexte est le sous-ensemble
-> **de portée `patient`** de `patient.data`, lu au moment de l'évaluation. Le contexte n'est
-> jamais écrit dans l'occurrence, jamais exporté avec elle et jamais validé par elle.
+> **La visibilité d'une occurrence se calcule sur `contexte ⊕ occurrence`**, où le contexte est
+> le sous-ensemble **de portée `patient`** de `patient.data`, lu au moment de l'évaluation.
+> **Tout le reste** — obligations conditionnelles, comparaisons, validation des valeurs — se
+> calcule sur l'occurrence **seule**, comme aujourd'hui. Le contexte n'est jamais écrit dans
+> l'occurrence, jamais exporté avec elle et jamais validé par elle.
 
-Ce principe tient sans renommer de clé : `field_key` est unique par version, **toutes portées
-confondues** (`unique (template_version_id, field_key)`,
-[tables:69](../supabase/migrations/20260616090200_tables.sql)). La fusion ne peut donc pas
-produire de collision.
+La fusion ne peut pas produire de collision : `field_key` est unique par version, **toutes
+portées confondues** (`unique (template_version_id, field_key)`,
+[tables:69](../supabase/migrations/20260616090200_tables.sql)).
 
-Les fonctions qui filtrent déjà par portée restent justes sans modification :
-`assert_required_complete`, `missing_required_fields`, `assert_no_hidden_values`,
-`assert_block_hidden_values` et `assert_contains_any_hidden_values` ne retiennent que les
-variables `encounter` (ou celles du groupe). Seuls deux points demandent un traitement
-spécifique :
-
-1. **`assert_validation_rules` / `rule_holds`.** Sur des données fusionnées, une règle qui ne
-   porte **que** sur des variables permanentes (« si diabète alors HbA1c requise », toutes deux
-   permanentes) serait réévaluée dans l'occurrence. Une fiche patient incomplète bloquerait alors
-   la finalisation d'une lésion. **Règle :** dans une occurrence, on n'évalue que les règles qui
-   désignent au moins une variable **du groupe**.
-2. **Les appelants.** Chaque site qui évalue une occurrence doit lui passer les données
-   fusionnées. C'est l'inventaire du §5, et c'est le vrai coût du lot.
-
-Une seule fonction SQL porte la fusion, et tous les sites l'appellent :
+Une seule fonction SQL porte la fusion :
 
 ```
 occurrence_evaluation_data(p_version uuid, p_patient_data jsonb, p_data jsonb) returns jsonb
   -- p_data || (clés de p_patient_data dont la variable est de portée 'patient' dans p_version)
 ```
 
-La clé de l'occurrence l'emporte (`||` à droite), ce qui reste sans effet puisqu'il n'y a pas de
-collision. Côté web, le miroir est une fonction pure de `templateSections.ts` utilisée par tous
-les écrans d'occurrence.
+Côté web, le miroir est une fonction pure de `templateSections.ts`, utilisée par tous les écrans
+d'occurrence.
 
-## 4. Décisions à prendre
+### 3.1 Ce que « visibilité seulement » impose aux appelants
 
-### D1 — Périmètre : occurrences seules, ou aussi les rencontres ordinaires ?
+Les fonctions serveur actuelles reçoivent **un seul** jeu de données et en dérivent à la fois
+l'ensemble masqué et leurs contrôles. On distingue donc deux familles :
 
-| Option | Effet |
-|---|---|
-| **Occurrences seules** (recommandé) | Répond au besoin. Les rencontres ordinaires gardent leur sémantique actuelle. Surface web limitée aux écrans de groupe, qui sont déjà affichés **dans** la fiche patient : les valeurs permanentes y sont disponibles |
-| Occurrences et rencontres ordinaires | Même mécanisme serveur, mais `EncounterForm`, `EditEncounter` et la file hors ligne des visites doivent charger la fiche patient. Change aussi le sens des règles P3/P4 déjà écrites sur des visites |
-
-**Recommandation : occurrences seules en v1.** La fonction de fusion est écrite pour pouvoir être
-étendue ensuite sans changer de forme.
-
-### D2 — Quels verbes bénéficient du contexte ?
-
-La fusion rend le contexte disponible pour tous les verbes. La question est ce que l'éditeur
-autorise à créer :
-
-| Verbe, pilote permanent → cible de groupe | Proposition |
-|---|---|
-| `visible` | **Autorisé**. C'est le besoin |
-| `required` | **Autorisé**. Il devient enfin effectif (P3) |
-| Comparaison permanent ↔ groupe (« date de lésion ≥ date de naissance ») | **Autorisé**, sans coût supplémentaire |
-| Toute règle dont la **cible** est permanente et le pilote dans un groupe | **Refusé** : une fiche patient ne lit pas ses occurrences (agrégat sur plusieurs lignes, hors périmètre) |
-
-### D3 — Règles dormantes déjà enregistrées (P3, P4)
-
-Des règles `required` ou de comparaison entre une variable permanente et une variable de groupe
-peuvent déjà exister. Elles n'ont jamais rien fait. Avec L74, **elles s'activent** : des
-occurrences « complètes » peuvent apparaître incomplètes dans la file de complétion, et une
-nouvelle finalisation peut être refusée.
-
-| Option | Effet |
-|---|---|
-| **Activer, après audit** (recommandé) | Une requête de readiness compte ces règles par version avant déploiement. Si le compte est nul, il n'y a rien à décider. Sinon, on décide version par version |
-| Ne contextualiser que les règles créées après L74 | Exige un marqueur sur `validation_rule` et laisse deux sémantiques coexister pour la même forme de règle. Écarté sauf si l'audit révèle un cas réel |
-
-Le dépôt ne porte que des données fictives : l'activation n'a pas de conséquence clinique
-aujourd'hui. C'est le bon moment pour le faire.
-
-### D4 — La fiche patient change et masque des valeurs d'occurrences
-
-C'est **la partie dure**, comme le retrait de L72e. Exemple : on décoche « trauma » alors que
-trois lésions portent une gradation AO. La gradation est désormais masquée dans ces trois
-occurrences, mais ses valeurs restent dans trois **autres lignes**.
-
-Aujourd'hui, à l'intérieur d'une même fiche, l'écran retire les valeurs masquées à
-l'enregistrement après confirmation (`withoutHiddenValues`, `HiddenValuesConfirmation`). Le
-serveur tolère une valeur masquée en brouillon, mais la refuse à la finalisation
-(`assert_no_hidden_values`). Pour une cible `contains_any`, il la refuse à **tout** statut
-(`assert_contains_any_hidden_values`).
-
-| Option | Sort proposé | Motif |
+| Fonction | Données passées | Pourquoi c'est juste |
 |---|---|---|
-| **Effacement déclaré, atomique** | **Recommandé** | Même logique que L72e : l'écran annonce « 3 lésions perdront la valeur *Gradation AO* ». L'enregistrement de la fiche efface ces valeurs dans les occurrences, dans la **même transaction**, avec une correction journalisée par occurrence. Le serveur exige que la déclaration corresponde **exactement** à ce qu'il calcule, sinon conflit et rien n'est écrit |
-| Refuser la modification tant que des valeurs existent | Repli | Peu coûteux et honnête, mais oblige à ouvrir chaque occurrence avant de pouvoir corriger un diagnostic saisi par erreur. Contraire à l'objectif de fluidité |
-| Tolérer les valeurs masquées | Écarté | La donnée dirait une chose et le formulaire une autre. Une occurrence finalisée dans la version active ne pourrait plus être réenregistrée (`assert_no_hidden_values` la refuse) et l'export continuerait d'émettre la valeur. C'est la divergence silencieuse que L72e a déjà écartée |
+| `visibility_hidden_fields` | **fusionnées** | C'est le cœur du lot |
+| `missing_required_fields`, `assert_required_complete`, `record_completion_summary` | **fusionnées** | Elles ne réclament que les variables de rencontre du groupe (`required = true` du gabarit) ; le contexte ne sert qu'à leur calcul de masquage interne. Une variable masquée par le contexte n'est pas réclamée : « masqué = non obligatoire », inchangé |
+| `assert_no_hidden_values`, `assert_block_hidden_values`, `assert_contains_any_hidden_values`, `form_record_assert_no_changed_hidden_values` | **fusionnées** | Filtrées par portée `encounter` : seules les valeurs de l'occurrence sont contrôlées |
+| `assert_validation_rules` → `rule_holds` | **ensemble masqué calculé sur les données fusionnées, règles évaluées sur l'occurrence seule** | Sinon une règle `required` permanent → groupe s'activerait (contraire à D2/D3), et une règle purement patient pourrait bloquer une lésion. Il faut une variante qui reçoive l'ensemble masqué séparément (`rule_holds(rule, data, hidden)` le permet déjà) |
+
+Côté web, la même séparation existe déjà : `evaluateRules(rules, data, hidden)` reçoit les
+données et l'ensemble masqué séparément. On lui passe le **brouillon seul** et l'ensemble masqué
+calculé sur `contexte ⊕ brouillon`.
+
+## 4. Décisions arbitrées
+
+### D1 — Périmètre : occurrences seules ✅
+
+Les écrans de groupe s'affichent déjà **dans** la fiche patient : les valeurs permanentes y sont
+disponibles sans chargement supplémentaire. Le formulaire de visite, la correction de visite et
+la file hors ligne des visites ne changent pas.
+
+Raison principale de ne pas étendre aux visites maintenant : avec D4, décocher un pilote
+effacerait des valeurs dans **toutes les visites passées** d'un suivi longitudinal, et une visite
+décrit le patient tel qu'il était ce jour-là. Une extension éventuelle sera cadrée séparément ;
+la fonction de fusion est écrite pour pouvoir l'accueillir sans changer de forme.
+
+### D2 — Affichage seulement ✅
+
+| Règle, pilote permanent → cible de groupe | Sort |
+|---|---|
+| `visible` sur une variable | **Autorisée** — c'est le besoin |
+| `required` | **Refusée à l'écriture** (D5) : elle ne se déclencherait jamais |
+| Comparaison permanent ↔ groupe | **Refusée à l'écriture** (D5), même raison |
+| Toute règle dont la **cible** est permanente et le pilote dans un groupe | **Refusée** : une fiche patient ne lit pas ses occurrences (agrégat sur plusieurs lignes, hors périmètre) |
+
+Une variable de groupe marquée **obligatoire** dans le gabarit et masquée par le contexte n'est
+pas réclamée. C'est l'application de la règle existante « masqué = non obligatoire ».
+
+### D3 — Règles dormantes existantes : sans objet ✅
+
+Le contexte n'entrant pas dans `rule_holds`, les règles `required` et de comparaison inter-fiches
+déjà enregistrées gardent exactement leur comportement actuel (inertes). Aucune occurrence ne
+change de statut, la file de complétion et l'export ne bougent pas. Elles sont seulement
+**signalées** dans l'éditeur (D5).
+
+### D4 — Effacement déclaré, atomique ✅
+
+Exemple : on décoche « trauma » alors que trois lésions portent une gradation AO. La gradation
+devient masquée dans ces trois occurrences, mais ses valeurs restent dans trois **autres lignes**.
+
+1. **À l'écran**, avant l'enregistrement de la fiche : « 3 lésions perdront la valeur
+   *Gradation AO* », avec confirmation ou annulation.
+2. **En base**, la fiche et les occurrences sont écrites dans la **même transaction**. Chaque
+   effacement est une correction journalisée par occurrence, avec un motif engendré qui nomme la
+   variable pilote, jamais une valeur clinique.
+3. Le serveur recalcule lui-même les valeurs qui deviennent masquées. Il exige que la
+   déclaration envoyée par l'écran corresponde **exactement** à ce calcul ; sinon conflit
+   structuré, et **rien** n'est écrit. Les entrées locales sont préservées.
+4. Recocher le pilote ne fait **pas** revenir les valeurs effacées : l'écran le dit, et le
+   journal des corrections les conserve.
+
+Les options écartées : le refus tant que des valeurs existent (oblige à ouvrir chaque lésion pour
+corriger un diagnostic saisi par erreur), et la tolérance des valeurs masquées (la donnée dirait
+une chose et le formulaire une autre ; une occurrence finalisée ne pourrait plus être
+réenregistrée, et l'export émettrait la valeur).
 
 **Forme technique à trancher dans L74b** : L72e a ajouté des surcharges
 `update_patient(…, p_withdrawn_occurrences)` pour éviter les ambiguïtés PostgREST. La voie la
-plus simple est d'**étendre le contenu** de cette déclaration (champs effacés par occurrence) plutôt
-que d'ajouter un nouveau paramètre, qui créerait une troisième famille de surcharges.
+plus simple est d'**étendre le contenu** de cette déclaration (champs effacés par occurrence)
+plutôt que d'ajouter un paramètre, qui créerait une troisième famille de surcharges. Le retrait
+d'un bloc entier (L72e, suppression douce des occurrences) et l'effacement de variables (L74)
+doivent pouvoir figurer dans la **même** déclaration : décocher un diagnostic peut produire les
+deux à la fois.
 
-### D5 — Fermer les règles dormantes à la création
+### D5 — Refus des règles sans effet, à l'écriture ✅
 
-Puisque `assert_rule_structure` est réécrite, elle peut refuser les règles qui ne fonctionneront
-jamais (P1, P2, P5), avec un message qui dit pourquoi.
+On raisonne par **espace d'évaluation** : fiche patient, rencontre ordinaire, et chaque groupe
+répétable. `assert_rule_structure` refuse, avec un message qui dit pourquoi :
+
+| Règle | Exigence |
+|---|---|
+| `visible` sur une variable | Pilote et cible dans le même espace, **ou** pilote permanent et cible dans un groupe (nouveau) |
+| `required`, comparaison | Pilote et cible (ou les deux opérandes) dans le **même** espace |
+| `visible` sur un bloc racine portant un groupe enfant | Pilote **permanent** (P5) |
 
 **Contrainte impérative :** `validate_template_version_invariants` rejoue `assert_rule_structure`
 sur **toutes** les règles d'une version à chaque modification de structure
 ([20260927121847](../supabase/migrations/20260927121847_batch_visibility_graph_validation.sql)).
 Durcir la fonction sans précaution rendrait non modifiable toute version qui porte déjà une règle
-dormante. Le refus doit donc s'appliquer **à l'écriture d'une règle** (création ou modification),
-pas au rejeu des invariants. Les règles existantes sont signalées dans l'éditeur, sans blocage.
+dormante. Le refus s'applique donc **à l'écriture d'une règle** (création ou modification), pas
+au rejeu des invariants. Les règles existantes sont **signalées** dans l'éditeur, sans blocage.
 
-**Recommandation :** l'inclure, en sous-lot séparé (L74e). Sinon le concepteur continuera de
-créer des règles sans effet, ce qui est l'inverse du but de ce lot.
+Cas symétrique de P5 : rendre répétable une sous-section, ou y déplacer un groupe, sous un bloc
+déjà piloté par une variable de rencontre. Le refus doit figurer dans la garde d'écriture des
+sections, avec la même réserve sur le rejeu des invariants.
 
 ## 5. Inventaire des sites d'évaluation d'une occurrence
 
@@ -186,17 +210,17 @@ ou n'est pas réclamée. C'est le risque principal du lot.
 
 | Site | Rôle | Changement |
 |---|---|---|
-| `assert_curated_complete`, branche rencontre avec `group_section_key` ([repeatable_groups](../supabase/migrations/20260918191752_repeatable_groups.sql)) | Valeurs masquées (insertion), requis, règles bloquantes et valeurs masquées à la finalisation | Lire `patient.data` sous `for share`, puis passer les données fusionnées à `assert_block_hidden_values`, `assert_contains_any_hidden_values`, `assert_required_complete`, `assert_validation_rules` (filtrée, §3) et `assert_no_hidden_values` |
+| `assert_curated_complete`, branche rencontre avec `group_section_key` ([repeatable_groups](../supabase/migrations/20260918191752_repeatable_groups.sql)) | Valeurs masquées (insertion), requis, règles bloquantes et valeurs masquées à la finalisation | Lire `patient.data` sous `for share`, puis passer les données fusionnées aux contrôles de masquage et de complétude ; règles bloquantes selon §3.1 |
 | `form_record_assert_no_changed_hidden_values` (mise à jour E3) | Valeur masquée **modifiée** | Données fusionnées pour `old` et `new` |
 | RPC qui vérifient en amont : `create_encounter`, `update_encounter`, `update_encounter_compatible`, brouillons de mission ([20261001150000](../supabase/migrations/20261001150000_mission_partial_encounter_drafts.sql)), `commit_work_draft` | Contrôle anticipé de valeurs masquées | Données fusionnées, ou suppression du contrôle anticipé s'il double le déclencheur. **À trancher site par site, sans perdre les codes d'erreur attendus par les clients** |
 | `form_record_context_json` (contexte E3 d'une occurrence) | Variables masquées et manquantes rendues au client | Données fusionnées |
 | `missing_required_fields`, appelée par `base_completeness_stats`, `export_incomplete_records`, `base_completion_queue_page`, `my_todo_counts` | Complétude, file de complétion, filtre d'export | Chaque appelant joint déjà `patient p on p.id = e.patient_id` : il passe les données fusionnées |
 | `record_completion_summary` ([20261003230000:404](../supabase/migrations/20261003230000_completion_queue_visibility_rate.sql)) | Taux d'affichage et de documentation | Idem |
-| `assert_rule_structure` | Contrat des règles | Autoriser D2 ; refus D5 à l'écriture |
+| `assert_rule_structure` | Contrat des règles | D2 (pilote permanent → variable de groupe, `visible` seulement) ; refus D5 à l'écriture |
 | Retrait côté patient (`guard_patient_group_withdrawal`, `update_patient(…, p_withdrawn_occurrences)`) | D4 | Calculer les valeurs d'occurrence qui deviennent masquées et exiger la déclaration |
 
-**Concurrence.** Une occurrence s'évalue désormais contre la fiche patient. Toute écriture
-d'occurrence doit donc lire `patient.data` sous `for share`, et la mise à jour de la fiche
+**Concurrence.** La visibilité d'une occurrence dépend désormais de la fiche patient. Toute
+écriture d'occurrence lit donc `patient.data` sous `for share`, et la mise à jour de la fiche
 verrouille déjà ses occurrences (L72e, `patient_group_withdrawal_prepare`). Les deux écritures
 sont ainsi sérialisées : une occurrence ne peut pas être validée contre un contexte qu'une
 transaction concurrente est en train de changer. `guard_group_occurrence_block_visible` lit
@@ -210,15 +234,15 @@ d'une version à l'autre, une fiche patient sur une version plus récente reste 
 
 | Site | Changement |
 |---|---|
-| `RepeatableGroup.tsx` (`hiddenFieldKeys` l. 286 et 313, `evaluateRules`, `validateValues`) | Évaluer sur `contexte ⊕ brouillon`, n'enregistrer **que** le brouillon |
+| `RepeatableGroup.tsx` (`hiddenFieldKeys` l. 286 et 313, `evaluateRules`, `validateValues`) | Ensemble masqué calculé sur `contexte ⊕ brouillon` ; règles et validation sur le brouillon seul ; enregistrer **le brouillon seul** |
 | `PendingRepeatableGroup.tsx` (création de patient, L69) | Contexte = valeurs **locales non enregistrées** de la fiche. Au rejeu, le serveur évalue contre la fiche créée juste avant : même verdict |
 | `EditPatient.tsx`, `NewPatient.tsx` | Transmettre les valeurs courantes de la fiche aux groupes. **C'est ce qui donne la fluidité** : cocher « trauma » fait apparaître la colonne dans le tableau des lésions sans recharger. Annonce D4 avant l'enregistrement |
 | Tableau d'occurrences (`RepeatableGroup.tsx`, `visibleColumns`) | Une colonne masquée par le contexte l'est pour toutes les lignes : on retire la colonne. Un masquage interne à l'occurrence reste au niveau de la cellule |
 | `PatientDetail.tsx`, `CurationTask.tsx`, `recordCompletion.ts`, `localWorkDrafts.ts` | Même fusion pour la lecture, la curation et la complétude locale |
 | Hors ligne (`offline.ts`) | L'instantané contient déjà `patient.data`. À prouver par test : correction hors ligne d'une occurrence, puis rejeu après un changement de contexte → conflit classé, aucune écriture partielle |
-| `RuleForm.tsx` | Proposer les variables permanentes comme pilotes d'une cible de groupe. Libellé explicite : « condition lue sur la fiche patient » |
+| `RuleForm.tsx` | Pour une cible de groupe, proposer les variables permanentes comme pilotes **du seul verbe « afficher »**. Libellé explicite : « condition lue sur la fiche patient ». Signaler les règles existantes refusées par D5 |
 | `FormPreview.tsx` | L'aperçu d'un groupe simule le contexte avec les valeurs permanentes saisies dans l'aperçu |
-| `rulesForRepeatableSection` | Code mort : le supprimer, ou le réécrire comme filtre de §3.1 et l'utiliser |
+| `rulesForRepeatableSection` | Code mort : le supprimer |
 
 ### 5.3 Export
 
@@ -231,31 +255,34 @@ L'export ne réévalue pas la visibilité : il émet les valeurs stockées
 
 | Sous-lot | Objet | Pourquoi séparé |
 |---|---|---|
-| **L74a** | Socle serveur : `occurrence_evaluation_data`, filtre des règles, tous les sites du §5.1 sauf le retrait, `assert_rule_structure` (D2), verrou `for share` | Migration, déclencheurs et fonctions de complétude sont **couplés** : un seul responsable d'écriture |
-| **L74b** | Retrait D4 : calcul serveur, déclaration, effacement journalisé | Porte le risque, comme L72e. **À estimer avant d'ouvrir L74c**, car le repli change l'ergonomie promise |
-| **L74c** | Écrans de saisie : fusion web, tableau, création de patient, curation, hors ligne | Territoire `src/screens/member` + `src/domain` |
+| **L74a** | Socle serveur : `occurrence_evaluation_data`, séparation §3.1, tous les sites du §5.1 sauf le retrait, `assert_rule_structure` (D2), verrou `for share` | Migration, déclencheurs et fonctions de complétude sont **couplés** : un seul responsable d'écriture |
+| **L74b** | Retrait D4 : calcul serveur, déclaration commune avec L72e, effacement journalisé | Porte le risque, comme L72e. **À estimer en premier** |
+| **L74c** | Écrans de saisie : fusion web, tableau, création de patient, curation, hors ligne, annonce D4 | Territoire `src/screens/member` + `src/domain` |
 | **L74d** | Éditeur : `RuleForm`, `FormPreview`, messages | Territoire `src/screens/staff`, disjoint de L74c |
-| **L74e** | D5 : refus des règles dormantes à l'écriture, signalement des existantes | Indépendant, mais touche `assert_rule_structure` : **après** L74a, jamais en parallèle |
+| **L74e** | D5 : refus à l'écriture des règles sans effet, signalement des existantes, garde symétrique sur les sections | Touche `assert_rule_structure` : **après** L74a, jamais en parallèle |
 
-**Ordre.** L74a d'abord. L74b, L74c et L74d peuvent ensuite avancer en parallèle (surfaces
-disjointes). L74e vient après L74a. **Jalon utilisable : L74a + L74c + L74d**, et L74b avant
-toute utilisation réelle. Sans L74b, décocher un diagnostic laisse des valeurs masquées dans les
-occurrences.
+**Ordre.** Estimation de L74b, puis L74a. L74b, L74c et L74d peuvent ensuite avancer en
+parallèle (surfaces disjointes). L74e vient après L74a. **Jalon utilisable : L74a à L74d.**
+Sans L74b, décocher un diagnostic laisserait des valeurs masquées dans les occurrences : L74b
+n'est pas optionnel avant une utilisation réelle.
 
 ## 7. Ce qui ne change pas
 
 RLS et cloisonnement ; écriture par RPC uniquement ; journal des corrections ; verrou optimiste
 par occurrence ; borne à 50 occurrences ; héritage de visibilité du bloc (L72) ; interdiction de
 cibler un groupe par une règle (G-d) ; une occurrence ne contient que des variables de rencontre ;
-sémantique des rencontres ordinaires (si D1 = occurrences seules) ; export.
+sémantique des rencontres ordinaires ; comportement des règles `required` et de comparaison
+existantes ; export.
 
 ## 8. Hors périmètre
 
+- Obligation ou comparaison pilotée par une variable permanente sur une variable de groupe (D2).
+- Les rencontres ordinaires (D1) : cadrage séparé si le besoin apparaît.
 - Une variable permanente qui dépend du contenu des occurrences (« si au moins une lésion est
   instable ») : agrégat sur plusieurs lignes.
 - Une occurrence qui dépend d'une autre occurrence ou d'une rencontre ordinaire.
-- Les rencontres ordinaires (si D1 est confirmée).
 - Une règle de bloc dans un groupe (un groupe n'a pas de sous-section).
+- Restauration des valeurs effacées par D4 en recochant le pilote.
 
 ## 9. Plan de tests
 
@@ -264,11 +291,13 @@ sémantique des rencontres ordinaires (si D1 = occurrences seules) ; export.
 1. **Non-régression stricte.** Une version sans règle permanent → groupe donne, avant et après
    L74, des résultats identiques pour les quatre fonctions de complétude,
    `record_completion_summary` et le contexte E3.
-2. `visible` permanent → groupe : contexte vrai → la valeur est acceptée et réclamée si requise ;
-   contexte faux → la variable n'est pas réclamée, et une valeur est refusée à la finalisation.
+2. `visible` permanent → groupe : contexte vrai → la valeur est acceptée et réclamée si la
+   variable est requise ; contexte faux → la variable n'est pas réclamée, et une valeur est
+   refusée à la finalisation.
 3. `contains_any` sur le diagnostic patient → variable de groupe : une valeur est refusée **à tout
    statut** quand le diagnostic est absent, et acceptée quand il est présent.
-4. `required` permanent → groupe : exigé à la sortie du brouillon quand la condition est vraie.
+4. **D3, inertie conservée** : une règle `required` permanent → groupe déjà enregistrée ne
+   réclame toujours rien, quelle que soit la fiche patient.
 5. **Isolation des règles patient** : une règle bloquante qui ne porte que sur des variables
    permanentes, violée sur la fiche, **ne bloque pas** la finalisation d'une occurrence.
 6. Cascade : un pilote permanent masque une variable de groupe, qui pilote elle-même une autre
@@ -280,9 +309,10 @@ sémantique des rencontres ordinaires (si D1 = occurrences seules) ; export.
    jamais validées contre un contexte périmé.
 10. D4 : décocher le pilote avec N occurrences valorisées → déclaration exacte acceptée, valeurs
     effacées, une correction journalisée par occurrence. Déclaration inexacte → conflit, rien
-    n'est écrit.
-11. `assert_rule_structure` : D2 acceptée ; cible permanente pilotée par une variable de groupe
-    refusée ; D5 refusée à l'écriture mais **pas** au rejeu des invariants d'une version
+    n'est écrit. Retrait de bloc (L72e) et effacement de variables dans la même écriture.
+11. `assert_rule_structure` : `visible` permanent → groupe accepté ; `required` et comparaison
+    permanent → groupe refusés à l'écriture ; cible permanente pilotée par une variable de groupe
+    refusée ; règles D5 refusées à l'écriture mais **pas** au rejeu des invariants d'une version
     existante.
 12. Version historique d'occurrence ≠ version de la fiche : le contexte est lu avec les clés
     permanentes de la version de l'occurrence.
@@ -296,8 +326,9 @@ sémantique des rencontres ordinaires (si D1 = occurrences seules) ; export.
 15. Le payload envoyé pour une occurrence ne contient **aucune** clé permanente.
 16. Hors ligne : correction d'une occurrence puis changement du contexte côté serveur → conflit
     classé, aucune perte d'entrée locale.
-17. Éditeur : un pilote permanent est proposé pour une cible de groupe, avec le bon libellé.
-    L'aperçu simule correctement.
+17. Éditeur : un pilote permanent est proposé pour une cible de groupe, **uniquement** avec
+    « afficher », et avec le bon libellé. L'aperçu simule correctement. Une règle existante
+    refusée par D5 est signalée sans bloquer l'édition de la version.
 18. Non-régression : un groupe sans règle de contexte s'affiche à l'identique de L72.
 
 ### 9.3 Commandes
@@ -308,16 +339,19 @@ tout test qui écrit des données. Détail dans `meddata-release-check`.
 
 ## 10. Critères d'acceptation
 
-1. Une variable de groupe peut être montrée, exigée ou comparée selon une variable permanente, et
-   l'effet est visible **pendant** la saisie de la fiche.
+1. Une variable de groupe peut être montrée ou masquée selon une variable permanente, et l'effet
+   est visible **pendant** la saisie de la fiche.
 2. Aucune valeur permanente n'est copiée dans une occurrence.
-3. Une règle qui ne porte que sur la fiche patient n'affecte jamais une occurrence.
+3. Une règle qui ne porte que sur la fiche patient n'affecte jamais une occurrence ; les règles
+   `required` et de comparaison existantes gardent leur comportement.
 4. Une version sans règle de contexte donne des résultats identiques avant et après L74.
 5. Décocher un pilote ne laisse aucune valeur masquée dans une occurrence, et l'effacement est
    annoncé avant l'enregistrement.
 6. L'écran et le serveur rendent le même verdict, y compris hors ligne et à la création de
    patient.
-7. Aucune migration déjà appliquée n'est modifiée ; aucun message d'erreur ne nomme une valeur
+7. Une règle qui ne peut pas fonctionner est refusée à sa création, avec un message qui dit
+   pourquoi ; aucune version existante ne devient non modifiable.
+8. Aucune migration déjà appliquée n'est modifiée ; aucun message d'erreur ne nomme une valeur
    clinique.
 
 ## 11. Risques
@@ -325,8 +359,7 @@ tout test qui écrit des données. Détail dans `meddata-release-check`.
 | Risque | Portée | Traitement |
 |---|---|---|
 | Un site du §5 oublié : verdict faux, sans erreur | **Élevée** | Inventaire du §5 relu dans L74a ; tests 1, 2 et 8 bloquants |
-| Règles patient réévaluées dans l'occurrence | **Élevée** | Filtre du §3, test 5 |
-| Règles dormantes activées (D3) | Moyenne | Requête d'audit en readiness avant déploiement |
-| D4 déborde et impose le repli | Moyenne | Estimer L74b avant L74c |
+| Contexte passé par erreur à `rule_holds` : règles dormantes activées, règles patient réévaluées | **Élevée** | Séparation §3.1, tests 4 et 5 |
+| D4 déborde et impose le repli (refus) | Moyenne | Estimer L74b en premier |
 | Durcissement D5 qui bloque des versions existantes | Moyenne | Refus à l'écriture seulement, test 11 |
 | Coût de la fusion dans les requêtes de complétude (une évaluation de visibilité par occurrence) | Faible à moyenne | `record_completion_summary` saute déjà l'évaluation quand la version n'a aucune règle `visible` ; mesurer sur le jeu de 402 variables / 238 règles de L73 |
