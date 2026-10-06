@@ -135,7 +135,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     () => withRepeatableSteps(formGroups, repeatableGroup ? sections : null, masked, commonLayout),
     [formGroups, sections, repeatableGroup, masked, commonLayout],
   );
-  // L74 — sous une liste multiple, les variables qu'elle fait apparaitre se regroupent par
+  // L75 — sous une liste multiple, les variables qu'elle fait apparaitre se regroupent par
   // option. Le meme arbre sert au rendu et a l'ordre de parcours : « suivant » suit l'affichage.
   const optionTrees = useMemo(() => {
     const ruleList = rulesForVisibility.map((entry) => entry.rule);
@@ -299,7 +299,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   ].filter(Boolean).join(' · ') || t('form.section_required_none');
   const renderNodes = (nodes: readonly OptionNode<TemplateField>[]): ReactNode => nodes.map((node) => node.kind === 'field'
     ? <FieldFrame key={node.field.id} id={fieldId(node.field.fieldKey)} fieldKey={node.field.fieldKey} message={issueByKey.get(node.field.fieldKey)}>{renderField(node.field)}</FieldFrame>
-    // L74 D8 — une precision du pilote, pas un nouveau bloc : retrait leger et filet a gauche,
+    // L75 D8 — une precision du pilote, pas un nouveau bloc : retrait leger et filet a gauche,
     // titre en petit gras, aucun encadre. Retrait reduit sur un ecran etroit.
     : <fieldset key={node.key} data-option-group={node.key}
       className="min-w-0 space-y-5 border-l-2 border-slate-200 pl-2 @min-[28rem]:pl-4 dark:border-slate-700">

@@ -1,4 +1,4 @@
-// L74 — en-tetes d'option des variables dependantes d'une liste multiple
+// L75 — en-tetes d'option des variables dependantes d'une liste multiple
 // (docs/spec-entetes-options-declenchantes.md).
 //
 // Presentation seule : les regles d'affichage disent deja quelle option d'une liste multiple

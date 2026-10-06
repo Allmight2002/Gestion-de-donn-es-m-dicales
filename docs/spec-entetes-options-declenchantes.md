@@ -1,7 +1,7 @@
 # Spécification — En-têtes d'option pour les variables dépendantes d'une liste multiple
 
 - Statut : **spécifiée le 2026-10-06, décisions arrêtées le même jour (§9), implémentée
-  localement, non déployée** — lot **L74**. Fonction de domaine `arrangeOptionGroups` /
+  localement, non déployée** — lot **L75**. Fonction de domaine `arrangeOptionGroups` /
   `flattenOptionNodes` (`src/domain/optionGroups.ts`), rendu et ordre de navigation dans
   `SectionedFields` ; critères du §8 couverts par `src/domain/optionGroups.test.tsx` (1 à 9) et
   `src/screens/member/OptionGroups.test.tsx` (10 à 14)
@@ -177,7 +177,7 @@ de celui affiché.
 
 ## 7. Découpage
 
-Un seul lot, **L74**, côté web uniquement.
+Un seul lot, **L75**, côté web uniquement.
 
 | Étape | Fichiers | Contenu |
 |---|---|---|

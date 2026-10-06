@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// L74 — en-tetes d'option sous une liste multiple : criteres 10 a 14 de
+// L75 — en-tetes d'option sous une liste multiple : criteres 10 a 14 de
 // docs/spec-entetes-options-declenchantes.md §8. Donnees fictives uniquement.
 import { useState } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -52,7 +52,7 @@ beforeEach(() => {
   localStorage.setItem('registre.lang', 'fr');
 });
 
-describe('SectionedFields — en-tetes d\'option (L74)', () => {
+describe('SectionedFields — en-tetes d\'option (L75)', () => {
   test('10-11. un regroupement par option cochee, legende = libelle ; decocher retire en-tete et variables', async () => {
     render(<I18nProvider><Form /></I18nProvider>);
     expect(screen.queryByRole('group', { name: 'Infection' })).toBeNull();

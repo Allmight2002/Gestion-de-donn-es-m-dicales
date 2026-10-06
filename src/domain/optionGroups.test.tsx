@@ -1,4 +1,4 @@
-// L74 — en-tetes d'option des variables dependantes d'une liste multiple : criteres 1 a 9 de
+// L75 — en-tetes d'option des variables dependantes d'une liste multiple : criteres 1 a 9 de
 // docs/spec-entetes-options-declenchantes.md §8. Donnees fictives uniquement.
 import { describe, expect, test } from 'vitest';
 import type { FieldType, TemplateField } from '../data/types';
