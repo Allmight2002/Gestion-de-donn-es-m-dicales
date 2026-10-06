@@ -287,6 +287,10 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // calculees -- il n'analyse jamais leur contenu.
       'assert_diagnosis_configuration',
       'base_completeness_stats',
+      // File « a completer » et compteur « A faire » : contexte de version de la definition
+      // unique d'un dossier a completer. Lit formula seulement pour exclure les variables
+      // calculees des obligations et du taux de completion -- il ne l'evalue jamais.
+      'completion_version_context',
       // L58 : la liste des 21 colonnes recopiees, formule comprise, a quitte
       // `copy_template_fields` pour cette fonction, que la recopie de version ET l'import
       // d'un bloc partagent. `copy_template_fields` ne mentionne donc plus la colonne : elle
@@ -329,10 +333,6 @@ describe('L35 — PL/pgSQL sait qu une variable est calculee, mais ne l evalue j
       // `enforce_template_field_formula` la valide a l'insertion.
       'import_template_definition',
       'missing_required_fields',
-      // File « a completer » et compteur « A faire » : definition unique d'un dossier a
-      // completer. Lit formula seulement pour exclure les variables calculees des obligations
-      // et du taux de completion -- il ne l'evalue jamais.
-      'record_completion_summary',
       // L32 x L35 : rend le libelle d'une variable SI elle est calculee, sinon null. C'est la
       // seule lecture de la colonne partagee par le refus a l'ecriture d'une regle et par le
       // diagnostic d'une version.

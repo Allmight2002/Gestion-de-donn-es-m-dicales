@@ -1,6 +1,6 @@
 # Spécification — En-têtes d'option pour les variables dépendantes d'une liste multiple
 
-- Statut : 📋 **spécifiée le 2026-10-06, décisions arrêtées le même jour (§9), non implémentée** — lot **L74**
+- Statut : 📋 **spécifiée le 2026-10-06, décisions arrêtées le même jour (§9), non implémentée** — lot **L75**
 - Nature : **présentation seule**. Aucune migration, aucune RPC, aucun changement de stockage,
   de validation, de complétude, d'export, de cohorte ni d'instantané hors-ligne
 - Surface web visée : `src/domain/templateSections.ts` (ou un module de domaine voisin),
@@ -173,7 +173,7 @@ de celui affiché.
 
 ## 7. Découpage
 
-Un seul lot, **L74**, côté web uniquement.
+Un seul lot, **L75**, côté web uniquement.
 
 | Étape | Fichiers | Contenu |
 |---|---|---|
