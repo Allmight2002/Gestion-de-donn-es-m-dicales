@@ -7,7 +7,8 @@ import { calculateFormProgress } from '../../domain/formProgress';
 import { useI18n } from '../../i18n/useI18n';
 import { ValidationSummary } from '../../components/ValidationSummary';
 import { BottomSheet } from '../../components/BottomSheet';
-import { findProposalField, isProposalSource } from '../../domain/proposalField';
+import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
+import { arrangeOptionGroups, flattenOptionNodes, type OptionNode } from '../../domain/optionGroups';
 
 const NO_VALUES: Record<string, unknown> = {};
 const NO_RULES: readonly ValidationRule[] = [];
@@ -134,6 +135,20 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     () => withRepeatableSteps(formGroups, repeatableGroup ? sections : null, masked, commonLayout),
     [formGroups, sections, repeatableGroup, masked, commonLayout],
   );
+  // L74 — sous une liste multiple, les variables qu'elle fait apparaitre se regroupent par
+  // option. Le meme arbre sert au rendu et a l'ordre de parcours : « suivant » suit l'affichage.
+  const optionTrees = useMemo(() => {
+    const ruleList = rulesForVisibility.map((entry) => entry.rule);
+    const companions = proposalKeysOf(allFields ?? fields);
+    return new Map(formGroups.map((group) => [group.key, arrangeOptionGroups(group.fields, ruleList, companions)]));
+  }, [formGroups, rulesForVisibility, allFields, fields]);
+  const displayRank = useMemo(() => {
+    const ranks = new Map<string, number>();
+    for (const group of formGroups) {
+      for (const field of flattenOptionNodes(optionTrees.get(group.key) ?? [])) ranks.set(field.fieldKey, ranks.size);
+    }
+    return ranks;
+  }, [formGroups, optionTrees]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
   // Lot 2 (5.6-B) : sur telephone, le sommaire s'ouvre en panneau bas au lieu de repousser le formulaire.
@@ -164,6 +179,15 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     const fieldKey = source?.fieldKey ?? key;
     return formGroups.find((group) => group.fields.some((field) => field.fieldKey === fieldKey))?.key ?? null;
   };
+  // Une variable compagnon se range avec sa source, juste apres elle.
+  const rankOf = (key: string) => {
+    const own = displayRank.get(key);
+    if (own !== undefined) return own;
+    const source = (allFields ?? fields).find((field) => isProposalSource(field) && findProposalField(allFields ?? fields, field)?.fieldKey === key);
+    const sourceRank = source ? displayRank.get(source.fieldKey) : undefined;
+    return sourceRank === undefined ? Number.MAX_SAFE_INTEGER : sourceRank + 0.5;
+  };
+  const byDisplay = (keys: readonly string[]) => [...keys].sort((a, b) => rankOf(a) - rankOf(b));
   const fieldId = (key: string) => `${id}-field-${key}`;
   const groupId = (key: string) => `${id}-group-${key}`;
   const label = (key: string) => {
@@ -180,7 +204,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   const issueByKey = new Map(visibleIssues.map((issue) => [issue.fieldKey, issue.message]));
   // Une variable annoncée mais absente du rendu courant (bloc masqué, autre portée) ne serait
   // atteignable par aucune étape : elle sort du compte au lieu de promettre un chemin inexistant.
-  const toFillSteps = [...toFillKeys].filter((key) => stepFor(key));
+  const toFillSteps = byDisplay([...toFillKeys].filter((key) => stepFor(key)));
 
   const reveal = (rootKey: string, targetKey?: string) => {
     setCollapsed((before) => { const next = new Set(before); next.delete(rootKey); return next; });
@@ -241,7 +265,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
   if (steps.length === 0) return null;
   const rootIndex = steps.findIndex((root) => root.key === active);
   const nextMissing = () => {
-    const candidates = progress.missingKeys.filter((key) => stepFor(key));
+    const candidates = byDisplay(progress.missingKeys.filter((key) => stepFor(key)));
     const index = currentField.current ? candidates.indexOf(currentField.current) : -1;
     const key = candidates[(index + 1) % candidates.length];
     if (key) goToField(key);
@@ -273,6 +297,15 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
     visibleIssues.length > 0 ? t('form.section_errors').replace('{n}', String(visibleIssues.length)) : null,
     toFillSteps.length > 0 ? t('form.to_fill_remaining').replace('{n}', String(toFillSteps.length)) : null,
   ].filter(Boolean).join(' · ') || t('form.section_required_none');
+  const renderNodes = (nodes: readonly OptionNode<TemplateField>[]): ReactNode => nodes.map((node) => node.kind === 'field'
+    ? <FieldFrame key={node.field.id} id={fieldId(node.field.fieldKey)} fieldKey={node.field.fieldKey} message={issueByKey.get(node.field.fieldKey)}>{renderField(node.field)}</FieldFrame>
+    // L74 D8 — une precision du pilote, pas un nouveau bloc : retrait leger et filet a gauche,
+    // titre en petit gras, aucun encadre. Retrait reduit sur un ecran etroit.
+    : <fieldset key={node.key} data-option-group={node.key}
+      className="min-w-0 space-y-5 border-l-2 border-slate-200 pl-2 @min-[28rem]:pl-4 dark:border-slate-700">
+      <legend className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{node.label}</legend>
+      {renderNodes(node.children)}
+    </fieldset>);
   const blockList = (onSelect: (key: string) => void, withStatus: boolean) => (
     <ol className="space-y-1 border-l-2 border-slate-200 pl-2 dark:border-slate-700">
       {steps.map((root) => {
@@ -355,7 +388,8 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
       <button type="button" className="btn-ghost min-h-11" onClick={() => { reveal(newGroup); setNewGroup(null); }}>{t('form.go_to_block')}</button>
     </div>}
     {nativeIssue && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{nativeIssue}</p>}
-    {submitted && <ValidationSummary errors={visibleIssues.filter((issue) => stepFor(issue.fieldKey)).map((issue) => ({
+    {submitted && <ValidationSummary errors={visibleIssues.filter((issue) => stepFor(issue.fieldKey))
+      .sort((a, b) => rankOf(a.fieldKey) - rankOf(b.fieldKey)).map((issue) => ({
       id: issue.fieldKey, targetId: fieldId(issue.fieldKey), label: (allFields ?? fields).find((field) => field.fieldKey === issue.fieldKey)?.label ?? issue.fieldKey,
       message: issue.message,
     }))} onNavigate={(issue) => goToField(issue.id)} />}
@@ -394,7 +428,7 @@ export function SectionedFields({ fields, renderField, sections, values, allFiel
                 </p>
               )}
               {root.repeatable && (root.maskedContent ?? repeatableGroup?.(root.repeatable))}
-              {group?.fields.map((field) => <FieldFrame key={field.id} id={fieldId(field.fieldKey)} fieldKey={field.fieldKey} message={issueByKey.get(field.fieldKey)}>{renderField(field)}</FieldFrame>)}
+              {group && renderNodes(optionTrees.get(group.key) ?? [])}
             </div>
           </fieldset>;
         })}
