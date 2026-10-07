@@ -299,6 +299,37 @@ describe('EditEncounter hors-ligne (Phase 2)', () => {
     await offlineCache.remove('b-group-edit');
   });
 
+  test('L74 : une variable d’occurrence pilotée par la fiche garde sa valeur à la correction hors-ligne', async () => {
+    const contextRules = { v1: [{
+      id: 'r-context', message: null, severity: 'block' as const,
+      rule: { if: { field: 'sexe', operator: 'equals', value: 'M' }, then: { field: 'group_marker', operator: 'visible' } },
+    }] };
+    await offlineCache.save(buildSnapshot(
+      { id: 'b-context-edit', name: 'Cache contexte', templateVersionId: 'v1' },
+      [{ id: 'p-context-edit', code: 'P-CTX', templateVersionId: 'v1', data: { sexe: 'M' }, validationStatus: 'curated' }],
+      { 'p-context-edit': [{ id: 'e-context-edit', encounterType: 'consultation', encounterDate: '2024-01-01', validationStatus: 'curated', ageValue: null, ageUnit: null, data: { group_marker: 'CONTEXT-SENTINEL' }, groupSectionKey: 'group_a', templateVersionId: 'v1' }] },
+      offlineFields,
+      Date.now(),
+      { v1: offlineFields },
+      contextRules,
+      offlineSections,
+      { v1: offlineSections },
+    ));
+    renderAt('/bases/b-context-edit/patients/p-context-edit/encounters/e-context-edit/edit', <EditEncounter />, '/bases/:id/patients/:patientId/encounters/:encounterId/edit');
+    // La fiche du patient (dans l'instantané) rend la variable visible : elle est saisissable.
+    expect(await screen.findByLabelText('Valeur de groupe')).toHaveValue('CONTEXT-SENTINEL');
+
+    fireEvent.change(screen.getByLabelText(/motif de la correction/i), { target: { value: 'corr contexte' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la rencontre' }));
+    await waitFor(async () => expect(await outbox.count('b-context-edit')).toBe(1));
+    const queued = (await outbox.list('b-context-edit'))[0];
+    // Sans contexte, la valeur aurait été retirée : le pilote `sexe` est absent de l'occurrence.
+    expect(queued.data).toEqual({ group_marker: 'CONTEXT-SENTINEL' });
+    expect(queued.data).not.toHaveProperty('sexe');
+    await outbox.remove(queued.id);
+    await offlineCache.remove('b-context-edit');
+  });
+
   test('bloque une ancienne rencontre sans marqueur ou inventaire de sections', async () => {
     await offlineCache.save(buildSnapshot(
       { id: 'b-unknown-edit', name: 'Cache ancien', templateVersionId: 'v-old' },
