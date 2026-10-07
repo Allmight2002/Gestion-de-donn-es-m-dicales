@@ -11,9 +11,12 @@ import { ToastProvider } from '../../components/Toast';
 import { EditPatient } from './EditPatient';
 import { NewPatient } from './NewPatient';
 import { PatientDetail } from './PatientDetail';
+import { EditEncounter } from './EditEncounter';
 import type { BaseListing, BaseRepository } from '../../data/bases';
 import type { TemplateRepository } from '../../data/templates';
-import type { Encounter, NewEncounterInput, PatientListItem, PatientRepository } from '../../data/patients';
+import type {
+  CompatibleEncounterUpdateInput, Encounter, NewEncounterInput, PatientListItem, PatientRepository, RecordFormContext,
+} from '../../data/patients';
 import type { AttachmentRepository } from '../../data/attachments';
 import type { TemplateField, TemplateSection, ValidationRule } from '../../data/types';
 
@@ -107,6 +110,7 @@ function renderAt(path: string, patients: PatientRepository, rules: ValidationRu
               <Route path="/bases/:id/patients/new/manual" element={<NewPatient mode="manual" />} />
               <Route path="/bases/:id/patients/:patientId" element={<PatientDetail />} />
               <Route path="/bases/:id/patients/:patientId/edit" element={<EditPatient />} />
+              <Route path="/bases/:id/patients/:patientId/encounters/:encounterId/edit" element={<EditEncounter />} />
             </Routes>
           </MemoryRouter>
         </RepositoryProvider>
@@ -249,5 +253,73 @@ describe('L74c — contexte patient des occurrences', () => {
     await waitFor(() => expect(createEncounter).toHaveBeenCalledTimes(1));
     expect(createPatient).toHaveBeenCalledTimes(1);
     expect(createEncounter.mock.calls[0][1].data).toEqual({ niveau: 'C5', gradation_ao: 'B' });
+  });
+
+  describe('correction d’une occurrence hors du tableau (EditEncounter, en ligne)', () => {
+    const contextItem = (key: string): RecordFormContext['fields'][number] => ({
+      field_key: key, definition_revision: 'v1', active_definition_revision: 'v1', scope: 'encounter',
+      definition_state: 'defined', applicability: 'applicable', applicability_reason: 'applicable',
+      repeatable_group_applicable: true, value_state: 'present', provenance: null,
+      definition: { fieldKey: key }, active_definition: { fieldKey: key },
+    } as RecordFormContext['fields'][number]);
+    const formContext = {
+      record_kind: 'encounter', record_id: 'o1', record_revision: 2, base_id: 'b1', active_revision: 1,
+      record_definition_revision: 'v1',
+      historical_definition: { version: { id: 'v1' } }, active_definition: { version: { id: 'v1' } },
+      fields: [contextItem('niveau'), contextItem('gradation_ao')],
+      values: { niveau: 'C5', gradation_ao: 'B' },
+      current_obligations: [],
+      completeness: {
+        current_missing_field_keys: [], current_missing_count: 0, current_complete: true,
+        historical_missing_field_keys: [], historical_missing_count: 0, historical_complete: true,
+      },
+      diagnosis_coverage: { diagnostics: [], counts: { covered: 0, common_only: 0, uncovered: 0, unclassified: 0 } },
+      validation_status: 'draft', encounter_type: 'autre', context_fingerprint: `sha256:${'c'.repeat(64)}`,
+    } as unknown as RecordFormContext;
+
+    function occurrencePatients(getPatient: PatientRepository['getPatient']) {
+      const updateEncounterCompatible = vi.fn(async (_input: CompatibleEncounterUpdateInput) => ({
+        recordKind: 'encounter' as const, recordId: 'o1', recordRevision: 3, validationStatus: 'draft',
+        operationId: 'op', activeRevision: 1, recordDefinitionRevision: 'v1', contextFingerprint: `sha256:${'d'.repeat(64)}`,
+      }));
+      const patients = {
+        ...makePatients({ trauma: true }, []),
+        getPatient,
+        async getEncounter() { return occurrence('o1', { niveau: 'C5', gradation_ao: 'B' }); },
+        async getEncounterFormContext() { return formContext; },
+        updateEncounterCompatible,
+      } as unknown as PatientRepository;
+      return { patients, updateEncounterCompatible };
+    }
+
+    test('la variable pilotée par la fiche reste affichée et sa valeur n’est jamais retirée', async () => {
+      const user = userEvent.setup();
+      const { patients, updateEncounterCompatible } = occurrencePatients(async () => ({
+        id: 'p1', code: 'P-0001', templateVersionId: 'v1', data: { trauma: true },
+        validationStatus: 'draft', version: 3, identity: null,
+      }) as PatientListItem);
+      renderAt('/bases/b1/patients/p1/encounters/o1/edit', patients);
+
+      expect(await screen.findByLabelText(/Gradation AO/)).toHaveValue('B');
+      await user.clear(screen.getByLabelText(/Niveau/));
+      await user.type(screen.getByLabelText(/Niveau/), 'T4');
+      await user.type(screen.getByLabelText(/motif de la correction/i), 'correction fictive');
+      await user.click(screen.getByRole('button', { name: /enregistrer/i }));
+
+      await waitFor(() => expect(updateEncounterCompatible).toHaveBeenCalledTimes(1));
+      expect(updateEncounterCompatible.mock.calls[0][0].patch).toEqual({ niveau: 'T4' });
+    });
+
+    test('fiche du patient illisible : la correction échoue plutôt que de retirer une valeur', async () => {
+      const user = userEvent.setup();
+      const { patients, updateEncounterCompatible } = occurrencePatients(async () => { throw new Error('réseau'); });
+      renderAt('/bases/b1/patients/p1/encounters/o1/edit', patients);
+
+      await screen.findByLabelText(/Niveau/);
+      await user.type(screen.getByLabelText(/motif de la correction/i), 'correction fictive');
+      await user.click(screen.getByRole('button', { name: /enregistrer/i }));
+      expect(await screen.findByText(/Fiche du patient illisible/)).toBeInTheDocument();
+      expect(updateEncounterCompatible).not.toHaveBeenCalled();
+    });
   });
 });
