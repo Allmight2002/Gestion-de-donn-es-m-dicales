@@ -1622,6 +1622,15 @@ export const messages = {
     'rule.terminology_release': 'Reference publication linked to this rule',
     'rule.terminology_release_hint': 'Publication identifier (UUID)',
     'rule.operator.in': 'is one of',
+    // --- L74d: rule evaluation spaces (patient context of groups) ----------------
+    'rule.context_patient_driver': 'Condition read from the patient record',
+    'rule.context_patient_driver_details': 'This permanent variable controls display in every occurrence of the group. It cannot make a variable required or be compared.',
+    'rule.context_sentence': '(condition read from the patient record)',
+    'rule.space_visible_cross_space': 'Display rule without effect: the condition and the variable are read from two different records.',
+    'rule.space_required_cross_space': 'Required rule without effect: the condition and the variable are read from two different records.',
+    'rule.space_comparison_cross_space': 'Comparison without effect: the two variables are read from two different records.',
+    'rule.space_block_group_driver': 'This block holds a repeatable group: only a permanent variable can control its display.',
+    'rule.space_details': 'A rule is evaluated on a single record: patient, visit or group occurrence. Exception: a permanent variable can control the display of a group variable. An existing rule stays saved but never fires.',
     // --- Mission accounts (L10) ---------------------------------------------------
     'mission.title': 'Mission accounts',
     'mission.subtitle': 'Create temporary access for field data entry.',
