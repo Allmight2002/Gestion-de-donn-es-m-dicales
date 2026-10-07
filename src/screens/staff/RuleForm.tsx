@@ -72,6 +72,7 @@ const SPACE_PROBLEM_KEYS: Record<RuleSpaceProblem, MessageKey> = {
   required_cross_space: 'rule.space_required_cross_space',
   comparison_cross_space: 'rule.space_comparison_cross_space',
   block_group_driver: 'rule.space_block_group_driver',
+  block_driver_in_group: 'rule.space_block_driver_in_group',
 };
 
 function operatorLabel(

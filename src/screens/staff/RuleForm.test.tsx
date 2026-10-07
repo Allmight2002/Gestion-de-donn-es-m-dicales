@@ -736,6 +736,25 @@ describe('RuleForm — condition lue sur la fiche patient (L74d)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Ce bloc porte un groupe répétable');
   });
 
+  test('un bloc n’est jamais commandé par une variable de groupe (arbitrage du 7 octobre)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderGroupForm();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'ao_grade');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'oui');
+    await user.selectOptions(screen.getByLabelText('Cible de visibilité'), 'section');
+    await user.selectOptions(screen.getByLabelText('Bloc affiché sous condition'), 'clinique');
+    // Le pilote deja choisi reste ; aucune autre variable de groupe n'est proposee.
+    expect(driverOptions()).toEqual(['trauma_dx', 'motif', 'ao_grade']);
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Affichage sans effet : une variable de groupe répétable ne peut pas commander l’affichage d’un bloc.',
+    );
+  });
+
   test('une règle existante inutilisable est expliquée dès l’ouverture, et non renvoyée telle quelle', async () => {
     const user = userEvent.setup();
     const onSubmit = renderGroupForm({
@@ -765,5 +784,16 @@ describe('RuleForm — condition lue sur la fiche patient (L74d)', () => {
     // P2 : la phrase reste lisible, le diagnostic l'accompagne.
     expect(screen.getByText(/alors Motif de visite est affichée\.$/)).toBeInTheDocument();
     expect(screen.getByText(/Affichage sans effet/)).toBeInTheDocument();
+  });
+
+  test('la liste signale une règle de bloc existante commandée par une variable de groupe', () => {
+    render(
+      <I18nProvider>
+        <RuleSummary fields={groupFields} sections={sections}
+          rule={{ if: { field: 'instable', operator: 'equals', value: 'oui' }, then: { section: 'clinique', operator: 'visible' } }} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText(/alors Clinique est affichée\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/une variable de groupe répétable ne peut pas commander l’affichage d’un bloc/)).toBeInTheDocument();
   });
 });
