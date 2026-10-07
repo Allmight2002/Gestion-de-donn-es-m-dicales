@@ -1639,6 +1639,7 @@ export const messages = {
     'rule.space_required_cross_space': 'Obligation sans effet : la condition et la variable sont lues sur deux fiches différentes.',
     'rule.space_comparison_cross_space': 'Comparaison sans effet : les deux variables sont lues sur deux fiches différentes.',
     'rule.space_block_group_driver': 'Ce bloc porte un groupe répétable : seule une variable permanente peut commander son affichage.',
+    'rule.space_block_driver_in_group': 'Affichage sans effet : une variable de groupe répétable ne peut pas commander l’affichage d’un bloc.',
     'rule.space_details': 'Une règle s’évalue sur une seule fiche : patient, visite ou occurrence d’un groupe. Exception : une variable permanente peut commander l’affichage d’une variable de groupe. Une règle existante reste enregistrée, mais ne se déclenche pas.',
     // --- Comptes de mission (L10) -------------------------------------------------
     'mission.title': 'Comptes de mission',

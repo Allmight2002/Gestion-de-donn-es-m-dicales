@@ -28,6 +28,8 @@ export const RULE_SPACE_PROBLEMS = [
   'comparison_cross_space',
   /** Affichage d'un bloc portant un groupe enfant, pilote par une variable non permanente (P5). */
   'block_group_driver',
+  /** Affichage d'un bloc pilote par une variable de groupe : la fiche ne lit pas ses occurrences. */
+  'block_driver_in_group',
 ] as const;
 export type RuleSpaceProblem = (typeof RULE_SPACE_PROBLEMS)[number];
 
@@ -113,7 +115,12 @@ export function fieldRuleVerdict(
   return { usable: false, problem: verb === 'visible' ? 'visible_cross_space' : 'required_cross_space' };
 }
 
-/** Verdict d'une regle d'affichage d'un BLOC entier : seul P5 la rend inutilisable. */
+/**
+ * Verdict d'une regle d'affichage d'un BLOC entier. P5 d'abord, puis l'arbitrage du
+ * 7 octobre 2026 : un bloc s'evalue sur la fiche patient ou une rencontre, qui ne lisent pas
+ * les occurrences, donc un pilote de groupe ne le commande jamais. Meme ordre que
+ * `public.rule_space_problem` (20261007130000_rules_without_effect).
+ */
 export function blockRuleVerdict(
   driver: RuleSpace,
   sectionKey: string,
@@ -122,6 +129,7 @@ export function blockRuleVerdict(
   if (driver.kind !== 'patient' && sectionCarriesGroup(sectionKey, sections)) {
     return { usable: false, problem: 'block_group_driver' };
   }
+  if (driver.kind === 'group') return { usable: false, problem: 'block_driver_in_group' };
   return USABLE;
 }
 

@@ -1630,6 +1630,7 @@ export const messages = {
     'rule.space_required_cross_space': 'Required rule without effect: the condition and the variable are read from two different records.',
     'rule.space_comparison_cross_space': 'Comparison without effect: the two variables are read from two different records.',
     'rule.space_block_group_driver': 'This block holds a repeatable group: only a permanent variable can control its display.',
+    'rule.space_block_driver_in_group': 'Display rule without effect: a repeatable group variable cannot control the display of a block.',
     'rule.space_details': 'A rule is evaluated on a single record: patient, visit or group occurrence. Exception: a permanent variable can control the display of a group variable. An existing rule stays saved but never fires.',
     // --- Mission accounts (L10) ---------------------------------------------------
     'mission.title': 'Mission accounts',

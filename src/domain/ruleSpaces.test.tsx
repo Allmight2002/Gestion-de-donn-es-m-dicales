@@ -178,6 +178,15 @@ describe('ruleSpaceVerdict', () => {
     expect(ruleSpaceVerdict(block('motif', 'clinique'), fields, sections)).toEqual({ usable: true, patientContext: false });
   });
 
+  test('arbitrage du 7 octobre : un bloc n’est jamais commandé par une variable de groupe', () => {
+    // Bloc sans groupe : la fiche ou la rencontre ne lit pas les occurrences.
+    expect(ruleSpaceVerdict(block('ao_grade', 'clinique'), fields, sections)).toEqual({ usable: false, problem: 'block_driver_in_group' });
+    // Groupe en sous-section, bloc ordinaire.
+    expect(ruleSpaceVerdict(block('materiel', 'identite'), fields, sections)).toEqual({ usable: false, problem: 'block_driver_in_group' });
+    // Bloc portant un groupe : P5 l'emporte, dans le même ordre que `rule_space_problem`.
+    expect(ruleSpaceVerdict(block('materiel', 'trauma'), fields, sections)).toEqual({ usable: false, problem: 'block_group_driver' });
+  });
+
   test('regle illisible ou variable inconnue : ce controle ne juge pas', () => {
     expect(ruleSpaceVerdict(null, fields, sections)).toEqual({ usable: true, patientContext: false });
     expect(ruleSpaceVerdict({ if: 'x', then: 'y' }, fields, sections)).toEqual({ usable: true, patientContext: false });
