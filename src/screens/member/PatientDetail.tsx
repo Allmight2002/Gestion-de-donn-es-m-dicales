@@ -23,6 +23,7 @@ import { withSections } from '../../data/templates';
 import { displayFieldValue, terminologyMarks, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
 import { addedFieldsForRecord } from '../../domain/recordCompletion';
+import { contextHiddenFieldKeys, occurrenceContextOf } from '../../domain/occurrenceContext';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
 import { formatDate } from '../../lib/formatDate';
@@ -534,10 +535,28 @@ export function PatientDetail() {
   // retient, donc celle dont le dictionnaire nomme leurs colonnes.
   const groupVersion = versions[currentVersionId ?? ''] ?? patientVersion;
   const groupFields = repeatableGroupFields(groupVersion?.fields ?? [], groupVersion?.sections);
-  const groupColumnsOf = (sectionKey: string) => groupFields
-    .filter((field) => field.section === sectionKey)
-    .sort((a, b) => a.displayOrder - b.displayOrder);
   const occurrencesOf = (sectionKey: string) => encounters.filter((encounter) => encounter.groupSectionKey === sectionKey);
+  // L74 — une colonne masquee par la fiche patient l'est pour toutes les occurrences : elle sort
+  // du tableau, sauf si une ligne y porte encore une valeur (rien n'est cache en silence).
+  const contextHiddenOf = (sectionKey: string): ReadonlySet<string> => {
+    const section = groupVersion?.sections.find((candidate) => candidate.sectionKey === sectionKey);
+    if (!groupVersion || !section) return new Set<string>();
+    return contextHiddenFieldKeys(
+      groupVersion.rules,
+      groupVersion.ruleFields.filter((field) => field.scope === 'encounter' && field.section === sectionKey),
+      [{ ...section, isRepeatable: false }],
+      occurrenceContextOf(patient.data, groupVersion.ruleFields, groupHidden),
+    );
+  };
+  const groupColumnsOf = (sectionKey: string) => {
+    const contextHidden = contextHiddenOf(sectionKey);
+    const rows = occurrencesOf(sectionKey);
+    return groupFields
+      .filter((field) => field.section === sectionKey)
+      .filter((field) => !contextHidden.has(field.fieldKey)
+        || rows.some((row) => !isEmptyOccurrenceValue(row.data[field.fieldKey])))
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+  };
   // L72 R4 — un groupe enfant se masque avec son bloc, selon les regles de la version qui
   // porte le groupe. D10 : masque mais porteur d'occurrences, il reste annonce, jamais cache.
   const groupHidden = !groupVersion || groupVersion === patientVersion

@@ -6,7 +6,10 @@ import type { Encounter } from '../../data/patients';
 import {
   displayFieldValue, terminologyMarks, type TemplateField, type TemplateSection, type ValidationRule,
 } from '../../data/types';
-import { evaluateRules, hiddenFieldKeys, isMissing, missingCodeOf, validateValues, withoutHiddenValues } from '../../domain/validation';
+import { isMissing, missingCodeOf, validateValues } from '../../domain/validation';
+import {
+  contextHiddenFieldKeys, EMPTY_OCCURRENCE_CONTEXT, occurrenceVerdict, type OccurrenceContext,
+} from '../../domain/occurrenceContext';
 import { isRefreshRequiredError } from '../../lib/errorMessage';
 import { useNarrowViewport } from '../../lib/useNarrowViewport';
 import { repeatableLabels } from '../../domain/repeatableLabels';
@@ -199,6 +202,7 @@ export function RepeatableGroup({
   section, fields, rules, requireComplete = false,
   patientId, occurrences, occurrencesError = null, onChanged, canWrite, online = true, onDirtyChange,
   occurrenceTemplateVersionId, canCreate = true, totalOccurrenceCount, masked = false,
+  context = EMPTY_OCCURRENCE_CONTEXT,
 }: {
   section: TemplateSection;
   /** Variables du bloc, dans l'ordre d'affichage de l'editeur. */
@@ -229,6 +233,11 @@ export function RepeatableGroup({
    * que le bloc redevienne visible.
    */
   masked?: boolean;
+  /**
+   * L74 — valeurs permanentes COURANTES de la fiche, enregistrées ou non. Elles ne servent qu'à
+   * la visibilité des variables de l'occurrence et ne sont jamais enregistrées avec elle.
+   */
+  context?: OccurrenceContext;
 }) {
   const { t } = useI18n();
   const patients = usePatientRepository();
@@ -283,8 +292,21 @@ export function RepeatableGroup({
     || rows.find((row) => row.id === draft.row?.id)?.validationStatus === 'curated');
   const groupCount = totalOccurrenceCount ?? rows.length;
   const limitReached = groupCount >= MAX_OCCURRENCES;
-  const hidden = hiddenFieldKeys(rules ?? [], draft?.values ?? {}, formFields, formSections);
-  const removed = withoutHiddenValues(draft?.values ?? {}, hidden).removed;
+  const { hidden, removed } = occurrenceVerdict({
+    rules: rules ?? [], fields: formFields, sections: formSections, values: draft?.values ?? {}, context,
+  });
+  // L74 — une colonne masquée par le contexte l'est pour toutes les lignes : elle sort du
+  // tableau. Elle reste tant qu'une ligne y porte encore une valeur, pour ne rien cacher en
+  // silence avant l'effacement déclaré (D4).
+  const contextHidden = useMemo(
+    () => contextHiddenFieldKeys(rules ?? [], formFields, formSections, context),
+    [rules, formFields, formSections, context],
+  );
+  const tableColumns = useMemo(
+    () => (contextHidden.size === 0 ? columns : columns.filter((column) => !contextHidden.has(column.fieldKey)
+      || rows.some((row) => !isEmptyOccurrenceValue(row.data[column.fieldKey])))),
+    [columns, contextHidden, rows],
+  );
   const labelOf = (key: string) => formFields.find((field) => field.fieldKey === key)?.label ?? key;
 
   const setValue = (key: string, value: unknown, remove = false) => setDraft((current) => {
@@ -310,12 +332,12 @@ export function RepeatableGroup({
       setError(t('form.repeatable_limit').replace('{max}', String(MAX_OCCURRENCES)));
       return;
     }
-    const hidden = hiddenFieldKeys(rules ?? [], draft.values, formFields, formSections);
-    const { values: data } = withoutHiddenValues(draft.values, hidden);
-    // Une occurrence complete l'est vraiment : le statut suit la completude, il ne la decrete
-    // pas. Une occurrence incomplete reste en brouillon et rejoint la file de completion (§8.5).
-    const ruleErrors = evaluateRules((rules ?? []).map((rule) => ({ rule: rule.rule, message: rule.message, severity: rule.severity })), data, hidden).blocking;
-    const complete = validateValues(formFields, data, true, hidden).length === 0 && ruleErrors.length === 0;
+    // L74 §3.1 — masquage sur `contexte ⊕ brouillon` ; regles, validation et payload sur le
+    // brouillon SEUL. Une occurrence complete l'est vraiment : le statut suit la completude, il
+    // ne la decrete pas. Une occurrence incomplete reste en brouillon (§8.5).
+    const { hidden, data, ruleErrors, complete } = occurrenceVerdict({
+      rules: rules ?? [], fields: formFields, sections: formSections, values: draft.values, context,
+    });
     const status = complete ? 'complete' : 'draft';
     const strict = requireComplete || complete;
     const blocking = [
@@ -429,7 +451,7 @@ export function RepeatableGroup({
           <RepeatableGroupTable
             groupLabel={groupLabel}
             rankLabel={labels.rank}
-            columns={columns}
+            columns={tableColumns}
             rows={rows}
             loading={loading}
             rowActions={rowActions}
