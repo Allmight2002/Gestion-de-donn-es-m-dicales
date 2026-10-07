@@ -186,7 +186,7 @@ describe('L74b — confirmation et enregistrement de l\'effacement', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Lésions : 2 occurrence(s) perdront « Gradation AO »')).toBeInTheDocument();
     expect(within(dialog).getByText('Lésions : 1 occurrence(s) perdront « Détail AO »')).toBeInTheDocument();
-    expect(within(dialog).getByText(/rétablir la variable de la fiche ne fera pas revenir ces valeurs/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/rétablir la variable de la fiche ne restaure rien/)).toBeInTheDocument();
     // Aucune valeur clinique d'occurrence dans l'annonce.
     expect(dialog.textContent).not.toMatch(/fictif-A|détail-fictif/);
     expect(updatePatientData).not.toHaveBeenCalled();

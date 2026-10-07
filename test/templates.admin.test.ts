@@ -319,8 +319,9 @@ describe('§8.3 regles de validation : versionnement + structure (cote serveur)'
   // regles ; elles s'appliquent aux prochains enregistrements, sans revalidation retroactive.
   // La structure et la version publiee restent gardees (tests ci-dessus et dedies).
   test('version DEJA UTILISEE -> ajout puis suppression de regle acceptes', async () => {
+    // L74e : les deux opérandes sont lus sur la même fiche, sinon la comparaison est sans effet.
     const used = (await db.admin.query(
-      "select field_key from public.template_field where template_version_id=$1 and type='text' order by display_order limit 2", [aliceVersionId])).rows;
+      "select field_key from public.template_field where template_version_id=$1 and type='text' and scope='encounter' order by display_order limit 2", [aliceVersionId])).rows;
     const [{ id }] = await rowsAs(memberId, ADD_RULE + ' returning id', [aliceVersionId, JSON.stringify({ operator: 'equals', left_field: used[0].field_key, right_field: used[1].field_key }), 'm', 'warn']);
     await rowsAs(memberId, 'delete from public.validation_rule where id=$1', [id]);
     expect((await db.admin.query('select id from public.validation_rule where id=$1', [id])).rows).toHaveLength(0);

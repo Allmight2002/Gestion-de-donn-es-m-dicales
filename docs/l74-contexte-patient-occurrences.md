@@ -1,6 +1,6 @@
 # L74 — Variables permanentes comme contexte d'affichage des occurrences de groupe répétable
 
-- Statut : 📋 **cadré le 6 octobre 2026, arbitré le 6 octobre 2026** ; L74a (socle serveur) implémenté, en revue (§13) ; L74b (effacement déclaré) implémenté, en revue (§14)
+- Statut : 📋 **cadré le 6 octobre 2026, arbitré le 6 octobre 2026** ; L74a (socle serveur) implémenté, en revue (§13) ; L74e (refus D5) implémenté, en revue (§14) ; L74b (effacement déclaré) implémenté, en revue (§15)
 - Prérequis : L66 à L72 fusionnés (groupes répétables, groupe en sous-section, retrait de bloc)
 - Surface serveur visée : `assert_rule_structure`, `assert_curated_complete` (branche rencontre),
   `guard_group_occurrence_block_visible`, fonctions de complétude (`missing_required_fields` et
@@ -523,13 +523,82 @@ Tests §9.1 couverts : 1 (deux bases, avant et après la migration, mêmes ident
 délègue à `update_encounter`), 8, 9 (verrou observé dans `pg_stat_activity`, puis refus sur
 le contexte engagé), 11 partie D2, 12. Hors L74a : 10 (L74b), 11 partie D5 (L74e).
 
-## 14. État de L74b — effacement déclaré (7 octobre 2026)
+## 14. État de L74e — refus à l'écriture des règles sans effet (7 octobre 2026)
+
+Statut : **implémenté, en revue** (PR brouillon vers `develop`). Migration additive unique
+`20261007130000_rules_without_effect.sql` ; aucune migration existante modifiée ; rien n'est
+appliqué à distance. Tests : `test/rules-without-effect.test.ts`.
+
+### 14.1 Critère
+
+Un seul verdict, `rule_space_problem(version, règle)`, miroir de `ruleSpaces.ts` (L74d) :
+espace d'une variable = `patient`, `encounter` ou `group:<section>` (section répétable de la
+variable ou d'un ancêtre, à toute profondeur ; variable sans section → section de repli
+`other`, comme côté web). Codes de problème identiques à ceux du web :
+
+| Règle | Refus | Code |
+|---|---|---|
+| `visible` sur une variable, ni même espace ni permanent → groupe | P1, P2 | `visible_cross_space` |
+| `required` entre deux espaces | P3 | `required_cross_space` |
+| Comparaison entre deux espaces | P4 | `comparison_cross_space` |
+| Bloc portant un groupe descendant, pilote non permanent | P5 | `block_group_driver` |
+| Bloc piloté par une variable de groupe (arbitrage du 7 octobre) | — | `block_driver_in_group` |
+
+Refus `P0001`, message « Regle sans effet : … » qui dit pourquoi sans nommer de valeur ni de
+libellé, détail `{"code":"RULE_WITHOUT_EFFECT","problem":…}`. Les refus de structure
+existants (`assert_rule_structure`, « meme fiche ») gardent leur message et passent avant.
+
+**Écart avec L74d.** La dernière ligne est postérieure à `ruleSpaces.ts` : l'éditeur
+accepte encore un bloc piloté par une variable de groupe, le serveur le refuse. À reporter
+dans `blockRuleVerdict` (PR #434 non fusionnée : `src/` n'est pas touché par L74e).
+
+### 14.2 Où le refus s'applique
+
+- **Garde de ligne `guard_validation_rule_structure`** : insertion, ou modification de `rule`
+  ou de la version. Message et gravité seuls restent modifiables sur une règle sans effet.
+- **Seulement par une personne authentifiée**, comme le gel des versions publiées : une
+  écriture de maintenance sans identité n'est pas une saisie.
+- **Pas une réécriture portée par un autre déclencheur** (`pg_trigger_depth() > 1`) : le suivi
+  du renommage d'une clé réécrit des règles sans effet sans échouer.
+- **Pas une reprise** : une règle insérée à l'identique d'une règle d'une autre version
+  (duplication, version suivante, promotion, base depuis un modèle, import de bloc ou de
+  définition du même environnement, préparation de formulaire) est acceptée. La copie n'ouvre
+  pas de porte : une règle sans effet **nouvelle** y reste refusée.
+- **Garde des sections** (nouveau déclencheur `trg_template_section_rule_space`, la garde
+  existante n'est pas redéfinie) : section rendue répétable, insérée répétable ou groupe
+  déplacé sous un bloc (ou un ancêtre) piloté par une variable non permanente → refus
+  `block_group_driver`. La recopie insère les sections avant les règles : jamais concernée.
+- **Jamais au rejeu** : `assert_rule_structure` et `validate_template_version_invariants`
+  sont inchangées. Une version qui porte déjà des règles P1 à P5 reste modifiable.
+- **Concurrence** : les deux gardes verrouillent la version (`for update`) avant le verdict ;
+  une règle et un changement de structure concurrents sont sérialisés.
+
+### 14.3 Limites connues
+
+1. Import d'une définition venue d'un **autre** environnement qui porte une règle sans
+   effet : aucune règle identique n'existe localement, l'import est refusé (la règle est une
+   écriture nouvelle pour cet environnement).
+2. Les autres changements de structure qui rendent une règle sans effet (variable déplacée
+   dans un groupe, section qui porte un pilote rendue répétable) ne sont pas refusés : seul
+   le cas symétrique de P5 était demandé. L'éditeur les signale (L74d).
+
+### 14.4 Tests (§9.1 test 11, partie D5)
+
+Toutes les lignes du tableau, acceptées et refusées ; modification de contenu refusée,
+message et gravité acceptés ; lot de règles refusé sans rien créer ; garde des sections
+(bascule, insertion, déplacement par `move_template_section`) ; version portant P1, P3, P4,
+P5 et un bloc piloté par un groupe : rejeu des invariants, ajout de variable,
+réordonnancement, déplacement de sections, nouvelle règle valide, renommage de clé,
+version suivante et duplication. Contrôle par mutation : sans le refus, 12 tests échouent ;
+sans les exemptions de renommage et de reprise, les tests correspondants échouent.
+
+## 15. État de L74b — effacement déclaré (7 octobre 2026)
 
 Statut : **implémenté, en revue** (PR brouillon vers `develop`). Migration additive unique
 `20261007120000_occurrence_context_withdrawal.sql` ; aucune migration existante modifiée ;
 rien n'est appliqué à distance.
 
-### 14.1 Ce qui est livré
+### 15.1 Ce qui est livré
 
 - **Calcul serveur** `patient_context_erasures` : pour chaque occurrence vivante non retirée
   avec son bloc, les variables renseignées (clé présente, valeur non nulle), masquées avec la
@@ -559,7 +628,7 @@ rien n'est appliqué à distance.
   « Gradation AO » » et précise que rétablir la variable ne restaure rien. Nouveau message
   pour `GROUP_WITHDRAWAL_OCCURRENCE_BLOCKED`.
 
-### 14.2 Points du §12.3, décidés le 7 octobre 2026
+### 15.2 Points du §12.3, décidés le 7 octobre 2026
 
 | Point | Décision | Conséquence |
 |---|---|---|
@@ -568,7 +637,7 @@ rien n'est appliqué à distance.
 | Brouillons de travail | Confirmé | Un brouillon d'occurrence lu avant l'effacement est refusé (`DRAFT_CONTEXT_CHANGED`, `refresh_required`) |
 | `work.commit()` d'`EditPatient` | Inchangé | Refus `GROUP_WITHDRAWAL_REQUIRED` (le code devient `DRAFT_VALIDATION` dans `commit_work_draft`) |
 
-### 14.3 Constats faits en route
+### 15.3 Constats faits en route
 
 1. **Tests L74a adaptés.** Deux tests de `occurrence-patient-context.test.ts` décochaient un
    pilote par écriture directe en laissant les valeurs en place. Depuis L74b, cette écriture
@@ -580,7 +649,7 @@ rien n'est appliqué à distance.
 3. **Collision L74c.** `EditPatient.tsx` n'est touché qu'autour de la déclaration et de la
    confirmation.
 
-### 14.4 Tests
+### 15.4 Tests
 
 - `test/occurrence-context-withdrawal.test.ts` (PostgreSQL embarqué, données fictives) :
   test 10 du §9.1 (non déclaré, déclaré exact, six déclarations inexactes, occurrence corrigée

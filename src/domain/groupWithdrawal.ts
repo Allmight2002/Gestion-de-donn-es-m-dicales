@@ -2,6 +2,7 @@ import type { TemplateField, TemplateSection } from '../data/types';
 import type { Encounter, GroupWithdrawalDeclaration } from '../data/patients';
 import { maskedRepeatableSectionKeys } from './templateSections';
 import { hiddenFieldKeys } from './validation';
+import { occurrenceContextOf, occurrenceHiddenFieldKeys } from './occurrenceContext';
 
 /** Un groupe dont l'enregistrement masque le bloc parent, avec ses occurrences enregistrées. */
 export interface PendingGroupWithdrawal {
@@ -108,8 +109,9 @@ export function pendingContextErasures(
   declarable: boolean;
 } {
   const patientKeys = new Set(fields.filter((f) => f.scope === 'patient').map((f) => f.fieldKey));
+  // Même contexte que les écrans d'occurrence (L74c) : une valeur masquée sur la fiche ne pilote rien.
   const contextOf = (data: Record<string, unknown>) =>
-    Object.fromEntries(Object.entries(data).filter(([key]) => patientKeys.has(key)));
+    occurrenceContextOf(data, fields, hiddenFieldKeys(rules, data, fields, sections));
   const contextBefore = contextOf(before);
   const contextAfter = contextOf(after);
   const bySection = new Map<string, { id: string; recordRevision: number; fieldKeys: string[] }[]>();
@@ -120,10 +122,10 @@ export function pendingContextErasures(
     const data = row.data ?? {};
     const filled = Object.keys(data).filter((key) => !patientKeys.has(key) && data[key] !== null && data[key] !== undefined);
     if (filled.length === 0) continue;
-    const hiddenAfter = hiddenFieldKeys(rules, { ...data, ...contextAfter }, fields, sections);
+    const hiddenAfter = occurrenceHiddenFieldKeys(rules, data, fields, sections, contextAfter);
     const candidates = filled.filter((key) => hiddenAfter.has(key));
     if (candidates.length === 0) continue;
-    const hiddenBefore = hiddenFieldKeys(rules, { ...data, ...contextBefore }, fields, sections);
+    const hiddenBefore = occurrenceHiddenFieldKeys(rules, data, fields, sections, contextBefore);
     const fieldKeys = candidates.filter((key) => !hiddenBefore.has(key)).sort();
     if (fieldKeys.length === 0) continue;
     if (typeof row.recordRevision !== 'number') declarable = false;

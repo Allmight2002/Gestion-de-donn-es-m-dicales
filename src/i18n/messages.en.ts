@@ -782,7 +782,7 @@ export const messages = {
     'form.group_withdrawal_conflict': 'Occurrences changed meanwhile (hidden block or cleared values). Nothing saved, your entries are kept: reload.',
     'form.context_erasure_body': 'Occurrence variables will be hidden by this record. Their values will be cleared when the record is saved:',
     'form.context_erasure_item': '{group}: {n} occurrence(s) will lose “{field}”',
-    'form.context_erasure_irreversible': 'Irreversible here: restoring the record variable will not bring these values back. The correction log keeps them.',
+    'form.context_erasure_irreversible': 'Irreversible: restoring the record variable restores nothing. The correction log keeps these values.',
     'form.errors_title': 'Errors to fix',
     'form.section_required_none': 'No required fields in this part',
     'form.section_required_count': '{done} of {total} required fields answered',
@@ -1625,6 +1625,15 @@ export const messages = {
     'rule.terminology_release': 'Reference publication linked to this rule',
     'rule.terminology_release_hint': 'Publication identifier (UUID)',
     'rule.operator.in': 'is one of',
+    // --- L74d: rule evaluation spaces (patient context of groups) ----------------
+    'rule.context_patient_driver': 'Condition read from the patient record',
+    'rule.context_patient_driver_details': 'This permanent variable controls display in every occurrence of the group. It cannot make a variable required or be compared.',
+    'rule.context_sentence': '(condition read from the patient record)',
+    'rule.space_visible_cross_space': 'Display rule without effect: the condition and the variable are read from two different records.',
+    'rule.space_required_cross_space': 'Required rule without effect: the condition and the variable are read from two different records.',
+    'rule.space_comparison_cross_space': 'Comparison without effect: the two variables are read from two different records.',
+    'rule.space_block_group_driver': 'This block holds a repeatable group: only a permanent variable can control its display.',
+    'rule.space_details': 'A rule is evaluated on a single record: patient, visit or group occurrence. Exception: a permanent variable can control the display of a group variable. An existing rule stays saved but never fires.',
     // --- Mission accounts (L10) ---------------------------------------------------
     'mission.title': 'Mission accounts',
     'mission.subtitle': 'Create temporary access for field data entry.',
@@ -1995,4 +2004,8 @@ export const messages = {
     'entryform.default_badge': 'Default',
     'entryform.default_saved': 'Default form saved',
     'entryform.open_manage': 'Manage entry forms',
+    'occurrence_context.pending_stale': 'The record changed after some occurrences were entered: review the flagged rows before saving.',
+    'occurrence_context.pending_stale_row': 'To review: the record changed after this row was entered.',
+    'occurrence_context.save_record_first': 'Save the record first: its changes alter the variables shown in this occurrence. Your entry is kept.',
+    'occurrence_context.record_unavailable': 'Patient record unreadable: this occurrence cannot be corrected yet. Your entry is kept.',
   } as const satisfies MessageDictionary;

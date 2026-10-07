@@ -15,6 +15,7 @@ import {
   offlineEncounterFieldScopesKnown, sectionsForOfflineVersion, useOnline, withinEncounterGroupScope,
   OFFLINE_GROUP_ENCOUNTER_REQUIRES_ONLINE,
 } from '../../data/offline';
+import { EMPTY_OCCURRENCE_CONTEXT, occurrenceContextOf, occurrenceHiddenFieldKeys, type OccurrenceContext } from '../../domain/occurrenceContext';
 import {
   validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues, isMissing, missingCodeOf,
 } from '../../domain/validation';
@@ -99,6 +100,10 @@ export function EditEncounter() {
   const [reloadRequired, setReloadRequired] = useState(false);
   const [offlineEditAllowed, setOfflineEditAllowed] = useState(false);
   const [offlineEditBlocked, setOfflineEditBlocked] = useState(false);
+  // L74 — une occurrence de groupe s'affiche selon la fiche ENREGISTREE du patient. Sans elle,
+  // une variable pilotee par la fiche serait vue masquee et sa valeur retiree a l'enregistrement.
+  const [occurrenceContext, setOccurrenceContext] = useState<OccurrenceContext>(EMPTY_OCCURRENCE_CONTEXT);
+  const [occurrenceContextMissing, setOccurrenceContextMissing] = useState(false);
   const compatibleAttempt = useRef<{ requestKey: string; operationId: string } | null>(null);
 
   const labelOf = (key: string) => fields.find((f) => f.fieldKey === key)?.label ?? key;
@@ -129,11 +134,11 @@ export function EditEncounter() {
   );
   const { hidden, removed, data: submittedData } = useMemo(() => {
     const applicableValues = Object.fromEntries(Object.entries(values).filter(([key]) => applicableFields.some((field) => field.fieldKey === key)));
-    const hiddenKeys = hiddenFieldKeys(rules, applicableValues, applicableFields, sections);
+    const hiddenKeys = occurrenceHiddenFieldKeys(rules, applicableValues, applicableFields, sections, occurrenceContext);
     for (const field of fields) if (!applicableFields.includes(field)) hiddenKeys.add(field.fieldKey);
     const stripped = withoutHiddenValues(values, hiddenKeys);
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
-  }, [rules, values, fields, sections, applicableFields]);
+  }, [rules, values, fields, sections, applicableFields, occurrenceContext]);
 
   // E5 : voir `EditPatient` — un ajout requis est annonce et compte, sans devenir une
   // obligation retroactive ; le rendu suit donc la meme liste que la validation locale.
@@ -229,6 +234,12 @@ export function EditEncounter() {
         setRules(offlineRules as unknown as ValidationRule[]);
         setValidationRules(offlineRules as unknown as ValidationRule[]);
         setSections(sectionsForEncounterScope(encounterSections, enc.groupSectionKey));
+        // L74 — l'instantane porte deja la fiche du patient : c'est elle qui sert de contexte.
+        const owner = enc.groupSectionKey ? snap!.patients.find((patient) => patient.encounters.some((row) => row.id === encounterId)) : null;
+        setOccurrenceContextMissing(!!enc.groupSectionKey && !owner);
+        setOccurrenceContext(owner
+          ? occurrenceContextOf(owner.data, dict as unknown as TemplateField[], hiddenFieldKeys(offlineRules, owner.data, dict.filter((field) => field.scope === 'patient') as unknown as TemplateField[], encounterSections))
+          : EMPTY_OCCURRENCE_CONTEXT);
         setCommonLayout(undefined);
         // L'instantane transporte le contrat par version : il n'ouvre aucun hors-ligne nouveau.
         setDiagnosisVersionId(enc.templateVersionId ?? null);
@@ -289,14 +300,28 @@ export function EditEncounter() {
             .filter((field) => !excludedContextKeys.has(field.fieldKey)));
           setRules(active.rules);
           setValidationRules(historical.rules);
-          setSections(active.sections ?? []);
+          // §5 : le bloc de l'occurrence se presente comme une section ordinaire, comme hors ligne.
+          setSections(sectionsForEncounterScope(active.sections ?? [], enc?.groupSectionKey ?? null));
           setCommonLayout(active.version.commonLayout);
         } else {
           setFields(historical.fields.filter((f) => f.scope === 'encounter').sort((a, b) => a.displayOrder - b.displayOrder));
           setRules(historical.rules);
           setValidationRules(historical.rules);
-          setSections(historical.sections ?? []);
+          setSections(sectionsForEncounterScope(historical.sections ?? [], enc?.groupSectionKey ?? null));
           setCommonLayout(historical.version.commonLayout);
+        }
+        // L74 — une occurrence s'evalue dans SA version, contre la fiche enregistree du patient.
+        if (enc?.groupSectionKey && patientId) {
+          const owner = await patients.getPatient(baseId, patientId).catch(() => null);
+          setOccurrenceContextMissing(!owner);
+          setOccurrenceContext(owner
+            ? occurrenceContextOf(owner.data, historical.fields, hiddenFieldKeys(
+              historical.rules, owner.data, historical.fields.filter((field) => field.scope === 'patient'), historical.sections,
+            ))
+            : EMPTY_OCCURRENCE_CONTEXT);
+        } else {
+          setOccurrenceContextMissing(false);
+          setOccurrenceContext(EMPTY_OCCURRENCE_CONTEXT);
         }
         setDiagnosisVersionId(historical.version.id);
         setDiagnosisContext(context ? active.version.diagnosisContext : historical.version.diagnosisContext);
@@ -366,6 +391,9 @@ export function EditEncounter() {
     e.preventDefault();
     if (!baseId || !patientId || !encounterId) return;
     if (busy) return;
+    // Sans la fiche du patient, la visibilite de l'occurrence est inconnue : mieux vaut refuser
+    // que retirer en silence une valeur pilotee par la fiche.
+    if (occurrenceContextMissing) { setError(t('occurrence_context.record_unavailable')); return; }
     if (work.locked) { await persistEncounter(); return; }
 
     // Completude exigee des la sortie du brouillon ('complete') pour tous les comptes, compte

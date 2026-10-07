@@ -35,6 +35,7 @@ import {
   hasUnsavedOccurrences, replayPendingOccurrences, unsavedOccurrences, type PendingOccurrence,
 } from '../../domain/pendingOccurrences';
 import { PendingRepeatableGroup } from './PendingRepeatableGroup';
+import { occurrenceContextOf, occurrenceNeedsReview } from '../../domain/occurrenceContext';
 import { useWorkDraft } from './useWorkDraft';
 import { WorkDraftPanel } from './WorkDraftPanel';
 import { PatientDraftDialog } from './PatientDraftDialog';
@@ -266,6 +267,20 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
   const coverage = useDiagnosisCoverage(versionId, diagnosisContext, 'patient', permanentData, fields, rules, sections);
 
   const entryData = useMemo(() => withoutUnshownProposals(permanentData, prefilled, shownKeys), [permanentData, prefilled, shownKeys]);
+  // L74 — les occurrences tamponnees s'evaluent contre les valeurs LOCALES de la fiche, celles
+  // que `create_patient` enregistrera juste avant leur rejeu : l'ecran et le serveur rendent le
+  // meme verdict. Une ligne que la fiche a rendue incoherente depuis sa saisie est a revoir.
+  const occurrenceContext = useMemo(() => occurrenceContextOf(entryData, fields), [entryData, fields]);
+  const stalePendingIds = useMemo(() => new Set(unsavedOccurrences(pending).filter((row) => {
+    const section = sections.find((candidate) => candidate.sectionKey === row.sectionKey);
+    if (!section) return false;
+    return occurrenceNeedsReview(row, {
+      rules,
+      fields: groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === row.sectionKey),
+      sections: [{ ...section, isRepeatable: false }],
+      context: occurrenceContext,
+    });
+  }).map((row) => row.localId)), [pending, sections, rules, groupFields, occurrenceContext]);
 
   // Voir `EncounterForm` : deux mises a jour peuvent partir du meme gestionnaire, la seconde
   // ne doit pas repartir de l'instantane du rendu.
@@ -340,6 +355,7 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
     e.preventDefault();
     if (busy || work.loading || work.candidates.length || work.discarding) return;
     if (pendingEditorSections.size > 0) return;
+    if (stalePendingIds.size > 0) { setError(t('occurrence_context.pending_stale')); return; }
     if (work.locked) { await persistPatient(); return; }
     // En hors-ligne intake-only, un code vide est ACCEPTED : il est genere depuis la cle
     // d'operation (stable, improbable a collision) a la mise en file. En ligne, le code
@@ -525,6 +541,8 @@ function NewPatientForm({ mode }: { mode: 'manual' | 'submit' }) {
       fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
       rules={rules}
       rows={pending.filter((row) => row.sectionKey === section.sectionKey)}
+      context={occurrenceContext}
+      staleRowIds={stalePendingIds}
       online={online && !offlineIntakeActive}
       busy={busy}
       onAdd={(data, validationStatus) => setPending((rows) => [...rows, {

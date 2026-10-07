@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261007120000_occurrence_context_withdrawal.sql`
-- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 450
+- Dernière migration incluse : `20261007130000_rules_without_effect.sql`
+- Tables : 61 · Policies RLS : 76 · Triggers : 153 · Fonctions : 455
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1189,6 +1189,7 @@ Triggers :
 - `export_revision_insert` — AFTER INSERT → `track_sources()`
 - `export_revision_truncate` — AFTER  → `track_sources()`
 - `export_revision_update` — AFTER UPDATE → `track_sources()`
+- `trg_template_section_rule_space` — BEFORE INSERT/UPDATE → `guard_template_section_rule_space()`
 - `trg_template_section_write` — BEFORE INSERT/UPDATE/DELETE → `guard_template_section_write()`
 - `trg_template_version_invariants_section_delete` — AFTER DELETE → `run_template_version_invariants_delete_statement()`
 - `trg_template_version_invariants_section_insert` — AFTER INSERT → `run_template_version_invariants_insert_statement()`
@@ -1594,6 +1595,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | guard_template_field_delete | — | DEFINER | plpgsql |
 | guard_template_field_locked_insert | — | DEFINER | plpgsql |
 | guard_template_field_update | — | DEFINER | plpgsql |
+| guard_template_section_rule_space | — | INVOKER | plpgsql |
 | guard_template_section_write | — | DEFINER | plpgsql |
 | guard_template_version_state | — | DEFINER | plpgsql |
 | guard_upload_ticket_attachment | — | DEFINER | plpgsql |
@@ -1743,11 +1745,15 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | rule_cmp | a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_contains_any_hit | a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_contains_any_target_valid | b jsonb | INVOKER | plpgsql |
+| rule_field_space | p_version_id uuid, p_field_key text | INVOKER | sql |
 | rule_holds | rule jsonb, data jsonb | INVOKER | sql |
 | rule_holds | rule jsonb, data jsonb, hidden text[] | INVOKER | plpgsql |
 | rule_operand_positions | p_rule jsonb | INVOKER | sql |
+| rule_section_carries_group | p_version_id uuid, p_section_key text | INVOKER | sql |
+| rule_space_problem | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | rule_value_present | v jsonb | INVOKER | sql |
 | rule_with_renamed_field | p_rule jsonb, p_old text, p_new text | INVOKER | plpgsql |
+| rule_without_effect_error | p_problem text | INVOKER | plpgsql |
 | run_template_version_invariants | — | DEFINER | plpgsql |
 | run_template_version_invariants_delete_statement | — | DEFINER | plpgsql |
 | run_template_version_invariants_insert_statement | — | DEFINER | plpgsql |
