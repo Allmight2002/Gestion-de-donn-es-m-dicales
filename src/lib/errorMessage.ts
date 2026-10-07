@@ -172,13 +172,16 @@ export function errorMessage(e: unknown, fallback: string): string {
     return "Le bloc de ce groupe est masqué pour ce patient : l'occurrence ne peut être ni créée ni corrigée. Vos saisies sont conservées ; rechargez la fiche pour voir son état actuel.";
   }
   if (code === 'GROUP_WITHDRAWAL_CONFLICT' || code === 'GROUP_WITHDRAWAL_REQUIRED') {
-    return "Les occurrences d'un bloc masqué par cet enregistrement ont changé entre-temps. Rien n'a été enregistré ; vos saisies sont conservées : rechargez les données avant de recommencer.";
+    return "Les occurrences concernées par cet enregistrement (bloc masqué ou valeurs effacées) ont changé entre-temps. Rien n'a été enregistré ; vos saisies sont conservées : rechargez les données avant de recommencer.";
   }
   if (code === 'GROUP_WITHDRAWAL_FORBIDDEN') {
     return "Cet enregistrement masque un bloc qui porte des occurrences, et vous n'avez pas le droit de les supprimer. Rien n'a été enregistré.";
   }
+  if (code === 'GROUP_WITHDRAWAL_OCCURRENCE_BLOCKED') {
+    return "Une occurrence ne peut pas perdre la valeur que cette fiche masque : elle ne respecte plus une règle de son formulaire. Rien n'a été enregistré ; corrigez d'abord cette occurrence.";
+  }
   if (code === 'GROUP_WITHDRAWAL_VERSION_REFUSED') {
-    return 'Cette version du formulaire masquerait des blocs qui portent des occurrences enregistrées. Elle n’a pas été appliquée.';
+    return 'Cette version du formulaire masquerait des blocs qui portent des occurrences enregistrées, ou des valeurs d’occurrences. Elle n’a pas été appliquée.';
   }
   // Transfert d'un jeu de variables par fichier : rien n'est cree quand l'un de ces refus tombe.
   if (code === 'TEMPLATE_IMPORT_FORMAT_UNSUPPORTED') {

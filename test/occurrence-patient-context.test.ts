@@ -168,6 +168,21 @@ const createOccurrence = async (pid: string, data: Row, status = 'draft') =>
 
 const setPatient = (pid: string, data: Row) =>
   db.admin.query('update public.patient set data=$2 where id=$1', [pid, JSON.stringify(data)]);
+// État hérité d'avant L74b : la fiche masque une valeur d'occurrence restée en place. Depuis
+// L74b, une telle écriture exige une déclaration ; le réglage local à la transaction, posé
+// ici par l'administrateur comme par les surcharges déclaratives, la laisse passer telle quelle.
+async function setPatientLeavingValues(pid: string, data: Row) {
+  const client = db.pg.getPgClient();
+  await client.connect();
+  try {
+    await client.query('begin');
+    await client.query(`select set_config('app.group_withdrawal_patient', $1, true)`, [pid]);
+    await client.query('update public.patient set data=$2 where id=$1', [pid, JSON.stringify(data)]);
+    await client.query('commit');
+  } finally {
+    await client.end();
+  }
+}
 const encounterData = async (id: string) =>
   (await db.admin.query('select data from public.encounter where id=$1', [id])).rows[0].data as Row;
 const readContext = async (base: string, id: string) =>
@@ -313,7 +328,7 @@ describe('tests 2 à 6 : le contexte commande l’affichage, et seulement l’af
     expect(await encounterData(created.id as string)).toEqual({ cote: 'droit' });
 
     // La fiche perd le code : la même correction est refusée, avec le même code d'erreur.
-    await setPatient(withCode, { diag: ['axial'] });
+    await setPatientLeavingValues(withCode, { diag: ['axial'] });
     const late = await refusal(rowsAs(db, ALICE, 'select public.update_encounter($1,$2::jsonb,$3,$4)',
       [created.id, JSON.stringify({ cote: 'gauche' }), 'draft', null]));
     expect(late.detail.code).toBe('contains_any_hidden_value');
@@ -423,6 +438,8 @@ describe('test 9 : écriture de fiche et écriture d’occurrence sont sérialis
     await writer.connect();
     try {
       await writer.query('begin');
+      // Valeur laissée en place (état d'avant L74b), voir `setPatientLeavingValues`.
+      await writer.query(`select set_config('app.group_withdrawal_patient', $1, true)`, [pid]);
       await writer.query('update public.patient set data=$2 where id=$1', [pid, JSON.stringify({ trauma: 'non' })]);
 
       const pending = refusal(rowsAs(db, ALICE, 'select public.update_encounter($1,$2::jsonb,$3,$4)',

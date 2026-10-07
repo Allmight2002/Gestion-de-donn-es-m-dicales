@@ -780,7 +780,10 @@ export const messages = {
     'form.group_withdrawal_body': 'Des blocs qui portent des occurrences enregistrées seront masqués. Leurs occurrences seront supprimées avec l’enregistrement de la fiche :',
     'form.group_withdrawal_item': '{block} : {n} occurrence(s) supprimée(s)',
     'form.group_withdrawal_irreversible': 'Irréversible ici : réafficher le bloc ne fera pas revenir ces occurrences.',
-    'form.group_withdrawal_conflict': 'Bloc masqué modifié entre-temps. Rien n’est enregistré, vos saisies sont conservées : rechargez.',
+    'form.group_withdrawal_conflict': 'Occurrences modifiées entre-temps (bloc masqué ou valeurs effacées). Rien n’est enregistré, vos saisies sont conservées : rechargez.',
+    'form.context_erasure_body': 'Des variables d’occurrences seront masquées. Leurs valeurs seront effacées à l’enregistrement :',
+    'form.context_erasure_item': '{group} : {n} occurrence(s) perdront « {field} »',
+    'form.context_erasure_irreversible': 'Irréversible : rétablir la variable de la fiche ne restaure rien. Le journal des corrections garde ces valeurs.',
     // UX-1/5/6/13 : textes de la saisie protegee, des blocs repliables et du resume d'erreurs.
     'form.errors_title': 'Erreurs à corriger',
     'form.section_required_none': 'Aucun champ requis dans cette partie',

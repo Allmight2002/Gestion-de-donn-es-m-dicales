@@ -1,6 +1,6 @@
 # L74 — Variables permanentes comme contexte d'affichage des occurrences de groupe répétable
 
-- Statut : 📋 **cadré le 6 octobre 2026, arbitré le 6 octobre 2026** ; L74a (socle serveur) implémenté, en revue (§13) ; L74e (refus D5) implémenté, en revue (§14)
+- Statut : 📋 **cadré le 6 octobre 2026, arbitré le 6 octobre 2026** ; L74a (socle serveur) implémenté, en revue (§13) ; L74e (refus D5) implémenté, en revue (§14) ; L74b (effacement déclaré) implémenté, en revue (§15)
 - Prérequis : L66 à L72 fusionnés (groupes répétables, groupe en sous-section, retrait de bloc)
 - Surface serveur visée : `assert_rule_structure`, `assert_curated_complete` (branche rencontre),
   `guard_group_occurrence_block_visible`, fonctions de complétude (`missing_required_fields` et
@@ -591,4 +591,73 @@ P5 et un bloc piloté par un groupe : rejeu des invariants, ajout de variable,
 réordonnancement, déplacement de sections, nouvelle règle valide, renommage de clé,
 version suivante et duplication. Contrôle par mutation : sans le refus, 12 tests échouent ;
 sans les exemptions de renommage et de reprise, les tests correspondants échouent.
+
+## 15. État de L74b — effacement déclaré (7 octobre 2026)
+
+Statut : **implémenté, en revue** (PR brouillon vers `develop`). Migration additive unique
+`20261007120000_occurrence_context_withdrawal.sql` ; aucune migration existante modifiée ;
+rien n'est appliqué à distance.
+
+### 15.1 Ce qui est livré
+
+- **Calcul serveur** `patient_context_erasures` : pour chaque occurrence vivante non retirée
+  avec son bloc, les variables renseignées (clé présente, valeur non nulle), masquées avec la
+  nouvelle fiche et visibles avec l'ancienne. Point fixe de `visibility_hidden_fields` sur
+  `occurrence_evaluation_data`, dans la version **active** de la base (celle du retrait L72e).
+  Seules comptent les variables atteignables depuis un pilote permanent
+  (`context_driven_field_keys`) : un masquage purement interne à l'occurrence garde la
+  tolérance d'avant L74, et une version sans règle de contexte ne calcule rien.
+- **Déclaration commune** : à côté des entrées L72e `{sectionKey, occurrences}`, des entrées
+  `{sectionKey, clearedFields: [{id, recordRevision, fieldKeys}]}`, une par groupe, exactement
+  l'une des deux listes par entrée. Mêmes surcharges `update_patient(…, p_withdrawn_occurrences)`
+  et `update_patient_compatible(…, p_withdrawn_occurrences)`, **aucune nouvelle signature**.
+  Comparaison exacte dans `patient_group_withdrawal_commit` : toute divergence donne
+  `GROUP_WITHDRAWAL_CONFLICT`, rien n'est écrit.
+- **Application**, après les suppressions douces : une ligne `field_change_log` par variable
+  effacée **avant** l'effacement (ancienne valeur, nouvelle nulle, source
+  `visibility_withdrawal`), motif engendré « Variable masquée par « *libellé du pilote* » :
+  valeur effacée avec l'enregistrement de la fiche ». La révision de l'occurrence avance.
+- **Gardes** : `guard_patient_group_withdrawal` refuse tout effacement non déclaré
+  (`GROUP_WITHDRAWAL_REQUIRED`, détail `clearedFields` quand il y en a ; détail d'un retrait
+  seul inchangé). `guard_base_version_group_withdrawal` refuse un changement de version qui
+  effacerait des valeurs, avec des comptes (`clearedOccurrences`, `clearedValues`,
+  `clearedSectionKeys`).
+- **Web** : `pendingContextErasures` (miroir) dans `groupWithdrawal.ts`, intégré à
+  `pendingGroupWithdrawals` (une seule déclaration). `EditPatient` passe les variables de groupe
+  et ouvre la confirmation existante, qui annonce « *Lésions* : 2 occurrence(s) perdront
+  « Gradation AO » » et précise que rétablir la variable ne restaure rien. Nouveau message
+  pour `GROUP_WITHDRAWAL_OCCURRENCE_BLOCKED`.
+
+### 15.2 Points du §12.3, décidés le 7 octobre 2026
+
+| Point | Décision | Conséquence |
+|---|---|---|
+| Brouillons de curation | **Refus**, comme L72e | Les rencontres d'un brouillon sont insérées comme rencontres ordinaires : elles ne réécrivent jamais une occurrence. La fiche du brouillon passe par le déclencheur : une finalisation qui décocherait un pilote est refusée (`GROUP_WITHDRAWAL_REQUIRED`), rien n'est écrit. Il faut corriger d'abord la fiche dans l'écran d'édition, qui annonce l'effacement |
+| Occurrence ancienne ou incohérente | **Obligation historique levée pour un effacement seul** | Une donnée validée ne repasse jamais en brouillon (`guard_no_curated_downgrade`) : sans cela, une lésion née dans une version qui exigeait la variable rendait la fiche impossible à corriger. `assert_curated_complete` (corps L74a) ne rejoue pas `assert_required_complete` historique quand l'écriture est un effacement déclaré : réglage local posé par le commit pour cette occurrence, **et** écriture qui ne fait que retirer des clés, statut inchangé. Tous les autres contrôles restent ; si l'un refuse (par exemple une règle bloquante `required` de l'ancienne version), `GROUP_WITHDRAWAL_OCCURRENCE_BLOCKED` nomme le groupe et l'occurrence, sans message interne |
+| Brouillons de travail | Confirmé | Un brouillon d'occurrence lu avant l'effacement est refusé (`DRAFT_CONTEXT_CHANGED`, `refresh_required`) |
+| `work.commit()` d'`EditPatient` | Inchangé | Refus `GROUP_WITHDRAWAL_REQUIRED` (le code devient `DRAFT_VALIDATION` dans `commit_work_draft`) |
+
+### 15.3 Constats faits en route
+
+1. **Tests L74a adaptés.** Deux tests de `occurrence-patient-context.test.ts` décochaient un
+   pilote par écriture directe en laissant les valeurs en place. Depuis L74b, cette écriture
+   exige une déclaration : les tests posent désormais explicitement le réglage local des
+   surcharges pour simuler un état hérité d'avant L74b. Leur objet (refus d'une correction
+   jugée sur le contexte engagé, sérialisation) est inchangé.
+2. **Valeur héritée masquée.** Une valeur déjà masquée avant l'écriture (déposée hors RPC, ou
+   laissée avant L74b) n'est ni comptée ni effacée, comme un bloc déjà masqué (D10).
+3. **Collision L74c.** `EditPatient.tsx` n'est touché qu'autour de la déclaration et de la
+   confirmation.
+
+### 15.4 Tests
+
+- `test/occurrence-context-withdrawal.test.ts` (PostgreSQL embarqué, données fictives) :
+  test 10 du §9.1 (non déclaré, déclaré exact, six déclarations inexactes, occurrence corrigée
+  entre-temps, forme invalide, droit d'écriture) et §12.5 (retrait et effacement dans une
+  déclaration, groupe retiré absent des effacements, cascade, valeur déjà masquée, voie
+  compatible et rejeu, écriture directe, import, brouillon de fiche, changement de version
+  refusé avec comptes et masquage interne toléré, occurrence ancienne « complète » ou
+  « validée », occurrence bloquée par une règle, garde du réglage, brouillon d'occurrence,
+  brouillon de curation).
+- `src/screens/member/ContextErasure.test.tsx` : calcul miroir et confirmation.
 
