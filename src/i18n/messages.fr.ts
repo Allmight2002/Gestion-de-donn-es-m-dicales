@@ -780,7 +780,10 @@ export const messages = {
     'form.group_withdrawal_body': 'Des blocs qui portent des occurrences enregistrées seront masqués. Leurs occurrences seront supprimées avec l’enregistrement de la fiche :',
     'form.group_withdrawal_item': '{block} : {n} occurrence(s) supprimée(s)',
     'form.group_withdrawal_irreversible': 'Irréversible ici : réafficher le bloc ne fera pas revenir ces occurrences.',
-    'form.group_withdrawal_conflict': 'Bloc masqué modifié entre-temps. Rien n’est enregistré, vos saisies sont conservées : rechargez.',
+    'form.group_withdrawal_conflict': 'Occurrences modifiées entre-temps (bloc masqué ou valeurs effacées). Rien n’est enregistré, vos saisies sont conservées : rechargez.',
+    'form.context_erasure_body': 'Des variables d’occurrences seront masquées. Leurs valeurs seront effacées à l’enregistrement :',
+    'form.context_erasure_item': '{group} : {n} occurrence(s) perdront « {field} »',
+    'form.context_erasure_irreversible': 'Irréversible : rétablir la variable de la fiche ne restaure rien. Le journal des corrections garde ces valeurs.',
     // UX-1/5/6/13 : textes de la saisie protegee, des blocs repliables et du resume d'erreurs.
     'form.errors_title': 'Erreurs à corriger',
     'form.section_required_none': 'Aucun champ requis dans cette partie',
@@ -1631,6 +1634,16 @@ export const messages = {
     'rule.terminology_release': 'Publication du référentiel liée à cette règle',
     'rule.terminology_release_hint': 'Identifiant de la publication (UUID)',
     'rule.operator.in': 'fait partie de',
+    // --- L74d : espaces d'evaluation des regles (contexte patient des groupes) ----
+    'rule.context_patient_driver': 'Condition lue sur la fiche patient',
+    'rule.context_patient_driver_details': 'Cette variable permanente commande l’affichage dans chaque occurrence du groupe. Elle ne peut ni rendre une variable obligatoire, ni être comparée.',
+    'rule.context_sentence': '(condition lue sur la fiche patient)',
+    'rule.space_visible_cross_space': 'Affichage sans effet : la condition et la variable sont lues sur deux fiches différentes.',
+    'rule.space_required_cross_space': 'Obligation sans effet : la condition et la variable sont lues sur deux fiches différentes.',
+    'rule.space_comparison_cross_space': 'Comparaison sans effet : les deux variables sont lues sur deux fiches différentes.',
+    'rule.space_block_group_driver': 'Ce bloc porte un groupe répétable : seule une variable permanente peut commander son affichage.',
+    'rule.space_block_driver_in_group': 'Affichage sans effet : une variable de groupe répétable ne peut pas commander l’affichage d’un bloc.',
+    'rule.space_details': 'Une règle s’évalue sur une seule fiche : patient, visite ou occurrence d’un groupe. Exception : une variable permanente peut commander l’affichage d’une variable de groupe. Une règle existante reste enregistrée, mais ne se déclenche pas.',
     // --- Comptes de mission (L10) -------------------------------------------------
     'mission.title': 'Comptes de mission',
     'mission.subtitle': 'Créez des accès temporaires pour la saisie terrain.',
@@ -2008,6 +2021,10 @@ export const messages = {
     'entryform.default_badge': 'Par défaut',
     'entryform.default_saved': 'Formulaire par défaut enregistré',
     'entryform.open_manage': 'Gérer les formulaires de saisie',
+    'occurrence_context.pending_stale': 'La fiche a changé depuis la saisie de certaines occurrences : revoyez les lignes signalées avant d’enregistrer.',
+    'occurrence_context.pending_stale_row': 'À revoir : la fiche a changé depuis la saisie de cette ligne.',
+    'occurrence_context.save_record_first': 'Enregistrez d’abord la fiche : ses modifications changent les variables affichées dans cette occurrence. Votre saisie est conservée.',
+    'occurrence_context.record_unavailable': 'Fiche du patient illisible : occurrence non corrigeable pour l’instant. Votre saisie est conservée.',
   } as const;
 
 export type MessageKey = keyof typeof messages;

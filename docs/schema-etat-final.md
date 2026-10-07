@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261005090000_completion_queue_version_context.sql`
-- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 445
+- Dernière migration incluse : `20261007130000_rules_without_effect.sql`
+- Tables : 61 · Policies RLS : 76 · Triggers : 153 · Fonctions : 455
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1189,6 +1189,7 @@ Triggers :
 - `export_revision_insert` — AFTER INSERT → `track_sources()`
 - `export_revision_truncate` — AFTER  → `track_sources()`
 - `export_revision_update` — AFTER UPDATE → `track_sources()`
+- `trg_template_section_rule_space` — BEFORE INSERT/UPDATE → `guard_template_section_rule_space()`
 - `trg_template_section_write` — BEFORE INSERT/UPDATE/DELETE → `guard_template_section_write()`
 - `trg_template_version_invariants_section_delete` — AFTER DELETE → `run_template_version_invariants_delete_statement()`
 - `trg_template_version_invariants_section_insert` — AFTER INSERT → `run_template_version_invariants_insert_statement()`
@@ -1400,6 +1401,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | assert_rule_structure | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | assert_upload_path_scope | p_base_id uuid, p_bucket text, p_path text | DEFINER | plpgsql |
 | assert_validation_rules | p_version uuid, p_data jsonb | INVOKER | plpgsql |
+| assert_validation_rules | p_version uuid, p_data jsonb, p_hidden text[] | INVOKER | plpgsql |
 | assert_visibility_acyclic | p_version_id uuid, p_rule jsonb, p_rule_id uuid | INVOKER | plpgsql |
 | assert_work_draft_context | p_base uuid, p_kind text, p_target uuid, p_version uuid, p_entity_revision text | DEFINER | plpgsql |
 | audit_form_preparation_save_conflict | — | DEFINER | plpgsql |
@@ -1442,6 +1444,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | completion_version_context | p_version uuid | INVOKER | sql |
 | compute_age | p_dob date, p_at date, p_unit text | INVOKER | sql |
 | confirm_base_purge_challenge | p_base_id uuid, p_challenge_id uuid, p_code text, p_operation_id uuid | DEFINER | plpgsql |
+| context_driven_field_keys | p_version uuid | INVOKER | sql |
 | copy_template_field_rows | p_source_version_id uuid, p_target_version_id uuid, p_force_patient_scope boolean, p_field_keys text[] | INVOKER | sql |
 | copy_template_fields | p_source_version_id uuid, p_target_version_id uuid, p_force_patient_scope boolean | INVOKER | plpgsql |
 | create_base_from_model | p_name text, p_specialty text, p_source_version_id uuid | DEFINER | plpgsql |
@@ -1592,6 +1595,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | guard_template_field_delete | — | DEFINER | plpgsql |
 | guard_template_field_locked_insert | — | DEFINER | plpgsql |
 | guard_template_field_update | — | DEFINER | plpgsql |
+| guard_template_section_rule_space | — | INVOKER | plpgsql |
 | guard_template_section_write | — | DEFINER | plpgsql |
 | guard_template_version_state | — | DEFINER | plpgsql |
 | guard_upload_ticket_attachment | — | DEFINER | plpgsql |
@@ -1655,11 +1659,14 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | move_template_section | p_version_id uuid, p_section_id uuid, p_parent_key text | DEFINER | plpgsql |
 | my_todo_counts | — | INVOKER | sql |
 | normalize_template_section_order | p_version_id uuid | INVOKER | sql |
+| occurrence_evaluation_data | p_version uuid, p_patient_data jsonb, p_data jsonb | INVOKER | sql |
 | open_or_resume_form_preparation | p_base_id uuid | DEFINER | plpgsql |
 | option_key_repair_plan | p_base_id uuid | DEFINER | sql |
 | owns_base_with_member | p_user uuid | DEFINER | sql |
 | owns_template | p_template uuid | DEFINER | sql |
 | patient_age_at | p_patient_id uuid, p_at date, p_unit text | DEFINER | plpgsql |
+| patient_context_erasure_reason | p_version_id uuid, p_group_section_key text, p_old_data jsonb, p_new_data jsonb | INVOKER | plpgsql |
+| patient_context_erasures | p_patient_id uuid, p_old_version_id uuid, p_old_data jsonb, p_new_version_id uuid, p_new_data jsonb, p_excluded text[] | INVOKER | plpgsql |
 | patient_group_occurrences | p_patient_id uuid, p_group_section_key text | INVOKER | sql |
 | patient_group_withdrawal_commit | p_patient_id uuid, p_old_data jsonb, p_declared jsonb | DEFINER | plpgsql |
 | patient_group_withdrawal_prepare | p_patient_id uuid, p_declared jsonb | DEFINER | plpgsql |
@@ -1738,11 +1745,15 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | rule_cmp | a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_contains_any_hit | a jsonb, b jsonb | INVOKER | plpgsql |
 | rule_contains_any_target_valid | b jsonb | INVOKER | plpgsql |
+| rule_field_space | p_version_id uuid, p_field_key text | INVOKER | sql |
 | rule_holds | rule jsonb, data jsonb | INVOKER | sql |
 | rule_holds | rule jsonb, data jsonb, hidden text[] | INVOKER | plpgsql |
 | rule_operand_positions | p_rule jsonb | INVOKER | sql |
+| rule_section_carries_group | p_version_id uuid, p_section_key text | INVOKER | sql |
+| rule_space_problem | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | rule_value_present | v jsonb | INVOKER | sql |
 | rule_with_renamed_field | p_rule jsonb, p_old text, p_new text | INVOKER | plpgsql |
+| rule_without_effect_error | p_problem text | INVOKER | plpgsql |
 | run_template_version_invariants | — | DEFINER | plpgsql |
 | run_template_version_invariants_delete_statement | — | DEFINER | plpgsql |
 | run_template_version_invariants_insert_statement | — | DEFINER | plpgsql |

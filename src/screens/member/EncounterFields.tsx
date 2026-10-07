@@ -167,6 +167,7 @@ export function HiddenValuesConfirmation({
   onConfirm,
   onCancel,
   withdrawals = [],
+  erasures = [],
 }: {
   removedKeys: readonly string[];
   fields: TemplateField[];
@@ -174,9 +175,11 @@ export function HiddenValuesConfirmation({
   onCancel: () => void;
   /** L72e — occurrences supprimées avec l'enregistrement, par bloc masqué. */
   withdrawals?: readonly { sectionKey: string; blockLabel: string; count: number }[];
+  /** L74b — valeurs d'occurrences effacées avec l'enregistrement, par groupe et par variable. */
+  erasures?: readonly { sectionKey: string; groupLabel: string; fieldKey: string; fieldLabel: string; count: number }[];
 }) {
   const { t } = useI18n();
-  if (removedKeys.length === 0 && withdrawals.length === 0) return null;
+  if (removedKeys.length === 0 && withdrawals.length === 0 && erasures.length === 0) return null;
   const labels = removedKeys.map((key) => fields.find((f) => f.fieldKey === key)?.label ?? key);
   return <ConfirmDialog open title={t('form.diagnostic_withdrawal_title')}
     body={<>
@@ -194,6 +197,18 @@ export function HiddenValuesConfirmation({
           ))}
         </ul>
         <p className="mt-2 font-medium">{t('form.group_withdrawal_irreversible')}</p>
+      </div>}
+      {erasures.length > 0 && <div className={removedKeys.length > 0 || withdrawals.length > 0 ? 'mt-3' : undefined}>
+        <p>{t('form.context_erasure_body')}</p>
+        <ul className="mt-2 list-disc pl-5">
+          {erasures.map((item) => (
+            <li key={`${item.sectionKey}:${item.fieldKey}`}>
+              {t('form.context_erasure_item').replace('{group}', item.groupLabel)
+                .replace('{n}', String(item.count)).replace('{field}', item.fieldLabel)}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 font-medium">{t('form.context_erasure_irreversible')}</p>
       </div>}
     </>}
     confirmLabel={t('form.diagnostic_withdrawal_confirm')} cancelLabel={t('form.diagnostic_withdrawal_cancel')}

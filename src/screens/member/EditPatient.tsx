@@ -14,6 +14,7 @@ import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
 import { RepeatableGroup } from './RepeatableGroup';
+import { occurrenceContextOf } from '../../domain/occurrenceContext';
 import { maskedRepeatableSectionKeys, repeatableGroupFields, repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
 import { pendingGroupWithdrawals } from '../../domain/groupWithdrawal';
 import { SkeletonList } from '../../components/Skeleton';
@@ -81,6 +82,8 @@ export function EditPatient() {
   const [canWrite, setCanWrite] = useState(false);
   const [groupFields, setGroupFields] = useState<TemplateField[]>([]);
   const [groupRules, setGroupRules] = useState<ValidationRule[]>([]);
+  // L74 — variables permanentes de la version des occurrences : elles seules forment le contexte.
+  const [groupContextFields, setGroupContextFields] = useState<TemplateField[]>([]);
   const [occurrences, setOccurrences] = useState<readonly Encounter[] | null>(null);
   const [occurrencesError, setOccurrencesError] = useState<string | null>(null);
   const [groupDirty, setGroupDirty] = useState<Record<string, boolean>>({});
@@ -179,11 +182,12 @@ export function EditPatient() {
         const hasGroups = repeatableSectionsOf(active.sections).length > 0;
         setGroupFields(repeatableGroupFields(active.fields, active.sections));
         setGroupRules(active.rules);
+        setGroupContextFields(active.fields.filter((field) => field.scope === 'patient'));
         if (!hasGroups) { setOccurrences([]); setOccurrencesError(null); } else void reloadOccurrences();
       } else {
         setFields([]); setRules([]); setValidationRules([]); setSections([]); setCommonLayout(undefined);
         setDiagnosisVersionId(null); setDiagnosisContext(undefined); setActiveDiagnosisVersionId(null);
-        setGroupFields([]); setGroupRules([]); setOccurrences([]); setOccurrencesError(null);
+        setGroupFields([]); setGroupRules([]); setGroupContextFields([]); setOccurrences([]); setOccurrencesError(null);
       }
       setError(null);
       loadedFor.current = `${baseId}:${patientId}`;
@@ -203,13 +207,26 @@ export function EditPatient() {
     const stripped = withoutHiddenValues(values, hiddenKeys);
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections]);
+  // L74 — les groupes lisent les valeurs COURANTES de la fiche, enregistrees ou non : cocher un
+  // pilote fait apparaitre la colonne et le champ de l'occurrence sans rechargement. Une valeur
+  // masquee sur la fiche ne pilote rien.
+  const occurrenceContext = useMemo(
+    () => occurrenceContextOf(values, groupContextFields, hidden),
+    [values, groupContextFields, hidden],
+  );
+  // Contexte de la fiche ENREGISTREE : c'est celui que le serveur lit pour juger une occurrence.
+  const savedOccurrenceContext = useMemo(
+    () => occurrenceContextOf(initialValues, groupContextFields, hiddenFieldKeys(rules, initialValues, fields, sections)),
+    [initialValues, groupContextFields, rules, fields, sections],
+  );
 
-  // L72e — un bloc masqué par cet enregistrement emporte les occurrences de son groupe : la
-  // confirmation les annonce par bloc, et l'enregistrement les déclare au serveur, qui refuse
-  // tout écart (conflit, rien n'est écrit).
+  // L72e — un bloc masqué par cet enregistrement emporte les occurrences de son groupe ; L74b —
+  // une variable d'occurrence masquée par la fiche perd sa valeur. La confirmation annonce les
+  // deux, et l'enregistrement les déclare au serveur, qui refuse tout écart (conflit, rien
+  // n'est écrit).
   const groupWithdrawal = useMemo(
-    () => pendingGroupWithdrawals(sections, rules, fields, initialValues, values, occurrences),
-    [sections, rules, fields, initialValues, values, occurrences],
+    () => pendingGroupWithdrawals(sections, rules, fields, initialValues, values, occurrences, groupFields),
+    [sections, rules, fields, initialValues, values, occurrences, groupFields],
   );
 
   // E5 : un ajout requis est annonce et compte, mais ne devient pas une obligation retroactive.
@@ -291,7 +308,8 @@ export function EditPatient() {
     setBlocking(block);
     if (block.length > 0) return;
 
-    if ((removed.length > 0 || groupWithdrawal.withdrawals.length > 0) && !confirmationOpen) {
+    if ((removed.length > 0 || groupWithdrawal.withdrawals.length > 0 || groupWithdrawal.erasures.length > 0)
+      && !confirmationOpen) {
       setConfirmationOpen(true);
       return;
     }
@@ -373,6 +391,8 @@ export function EditPatient() {
       section={section}
       fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
       rules={groupRules}
+      context={occurrenceContext}
+      savedContext={savedOccurrenceContext}
       patientId={patientId ?? null}
       occurrences={occurrences}
       occurrencesError={occurrencesError}
@@ -490,6 +510,7 @@ export function EditPatient() {
           <HiddenValuesConfirmation
             removedKeys={removed}
             withdrawals={groupWithdrawal.withdrawals}
+            erasures={groupWithdrawal.erasures}
             fields={fields}
             onConfirm={() => void persistPatient()}
             onCancel={() => setConfirmationOpen(false)}

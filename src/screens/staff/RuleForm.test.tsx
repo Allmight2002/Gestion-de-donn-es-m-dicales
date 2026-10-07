@@ -41,7 +41,9 @@ const fields: TemplateField[] = [
     id: 'f3',
     fieldKey: 'intervention_type',
     label: 'Type d’intervention',
-    scope: 'patient',
+    // L74d (D5) : meme fiche que les variables qu'elle pilote. Une variable permanente ne
+    // pilote une variable de rencontre ordinaire ni en affichage ni en obligation.
+    scope: 'encounter',
     section: 'clinique',
     type: 'select',
     unit: null,
@@ -606,3 +608,192 @@ describe('regroupement des règles par condition', () => {
   });
 });
 
+
+// L74d — contexte patient des groupes répétables (docs/l74-contexte-patient-occurrences.md,
+// D2 et D5, test 17 du §9.2). Données fictives.
+describe('RuleForm — condition lue sur la fiche patient (L74d)', () => {
+  const sections: TemplateSection[] = [
+    { id: 's-identite', sectionKey: 'identite', label: 'Identité', displayOrder: 0, parentSectionKey: null, isRepeatable: false },
+    { id: 's-clinique', sectionKey: 'clinique', label: 'Clinique', displayOrder: 1, parentSectionKey: null, isRepeatable: false },
+    { id: 's-lesions', sectionKey: 'lesions', label: 'Lésions', displayOrder: 2, parentSectionKey: null, isRepeatable: true },
+    { id: 's-trauma', sectionKey: 'trauma', label: 'Trauma', displayOrder: 3, parentSectionKey: null, isRepeatable: false },
+    { id: 's-interventions', sectionKey: 'interventions', label: 'Interventions', displayOrder: 4, parentSectionKey: 'trauma', isRepeatable: true },
+  ];
+  const select = (id: string, fieldKey: string, label: string, scope: TemplateField['scope'], section: string): TemplateField => ({
+    ...fields[0], id, fieldKey, label, scope, section, type: 'select', allowedValues: ['oui', 'non'],
+  });
+  const groupFields: TemplateField[] = [
+    select('g1', 'trauma_dx', 'Diagnostic de trauma', 'patient', 'identite'),
+    select('g2', 'motif', 'Motif de visite', 'encounter', 'clinique'),
+    select('g3', 'ao_grade', 'Gradation AO', 'encounter', 'lesions'),
+    select('g4', 'instable', 'Lésion instable', 'encounter', 'lesions'),
+  ];
+  const driverOptions = () => within(screen.getByLabelText('Variable de la condition'))
+    .getAllByRole('option').map((option) => (option as HTMLOptionElement).value).filter(Boolean);
+
+  function renderGroupForm(props: { initialRule?: unknown } = {}) {
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <RuleForm fields={groupFields} sections={sections} onSubmit={onSubmit} initialRule={props.initialRule}
+          submitLabel={props.initialRule ? 'Enregistrer la règle' : undefined} />
+      </I18nProvider>,
+    );
+    return onSubmit;
+  }
+
+  test('affichage d’une variable de groupe : la variable permanente est proposée, avec son libellé', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderGroupForm();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable affichée sous condition'), 'ao_grade');
+    // Même groupe, ou fiche patient ; jamais la rencontre ordinaire (P1).
+    expect(driverOptions()).toEqual(['trauma_dx', 'ao_grade', 'instable']);
+
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'trauma_dx');
+    expect(screen.getByText('Condition lue sur la fiche patient')).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'oui');
+    expect(screen.getByText(
+      'Si Diagnostic de trauma est égal à « oui », alors Gradation AO est affichée (condition lue sur la fiche patient).',
+    )).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      if: { field: 'trauma_dx', operator: 'equals', value: 'oui' },
+      then: { field: 'ao_grade', operator: 'visible' },
+    }, '', 'block');
+  });
+
+  test('obligation d’une variable de groupe : la variable permanente n’est pas proposée (D2)', async () => {
+    const user = userEvent.setup();
+    renderGroupForm();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'conditional');
+    await user.selectOptions(screen.getByLabelText('Variable rendue obligatoire'), 'ao_grade');
+    expect(driverOptions()).toEqual(['ao_grade', 'instable']);
+    expect(screen.queryByText('Condition lue sur la fiche patient')).toBeNull();
+  });
+
+  test('une obligation permanent → groupe est refusée à l’enregistrement, avec son motif', async () => {
+    // Pilote choisi AVANT la cible : il reste affiché, et l'enregistrement explique le refus.
+    const user = userEvent.setup();
+    const onSubmit = renderGroupForm();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'conditional');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'trauma_dx');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'oui');
+    await user.selectOptions(screen.getByLabelText('Variable rendue obligatoire'), 'ao_grade');
+    expect(screen.getByLabelText('Variable de la condition')).toHaveValue('trauma_dx');
+
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Obligation sans effet : la condition et la variable sont lues sur deux fiches différentes.');
+  });
+
+  test('une comparaison entre la fiche patient et un groupe est refusée (P4)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderGroupForm();
+
+    await user.selectOptions(screen.getByLabelText('Variable à contrôler'), 'trauma_dx');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Variable de référence'), 'ao_grade');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Comparaison sans effet');
+  });
+
+  test('un affichage piloté par la rencontre ordinaire vers un groupe est refusé (P1)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderGroupForm();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'motif');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'oui');
+    await user.selectOptions(screen.getByLabelText('Variable affichée sous condition'), 'ao_grade');
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Affichage sans effet');
+  });
+
+  test('un bloc portant un groupe enfant ne se pilote que depuis la fiche patient (P5)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderGroupForm();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'motif');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'oui');
+    await user.selectOptions(screen.getByLabelText('Cible de visibilité'), 'section');
+    await user.selectOptions(screen.getByLabelText('Bloc affiché sous condition'), 'trauma');
+    // Le pilote deja choisi reste ; les autres pilotes proposes sont permanents.
+    expect(driverOptions()).toEqual(['trauma_dx', 'motif']);
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Ce bloc porte un groupe répétable');
+  });
+
+  test('un bloc n’est jamais commandé par une variable de groupe (arbitrage du 7 octobre)', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderGroupForm();
+
+    await user.selectOptions(screen.getByLabelText('Type de règle'), 'visibility');
+    await user.selectOptions(screen.getByLabelText('Variable de la condition'), 'ao_grade');
+    await user.selectOptions(screen.getByLabelText('Relation clinique'), 'equals');
+    await user.selectOptions(screen.getByLabelText('Valeur de la condition'), 'oui');
+    await user.selectOptions(screen.getByLabelText('Cible de visibilité'), 'section');
+    await user.selectOptions(screen.getByLabelText('Bloc affiché sous condition'), 'clinique');
+    // Le pilote deja choisi reste ; aucune autre variable de groupe n'est proposee.
+    expect(driverOptions()).toEqual(['trauma_dx', 'motif', 'ao_grade']);
+    await user.click(screen.getByRole('button', { name: 'Ajouter une règle' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Affichage sans effet : une variable de groupe répétable ne peut pas commander l’affichage d’un bloc.',
+    );
+  });
+
+  test('une règle existante inutilisable est expliquée dès l’ouverture, et non renvoyée telle quelle', async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderGroupForm({
+      initialRule: { if: { field: 'trauma_dx', operator: 'equals', value: 'oui' }, then: { field: 'ao_grade', operator: 'required' } },
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Obligation sans effet');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la règle' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  test('la liste dit qu’une condition est lue sur la fiche patient, et signale une règle sans effet', () => {
+    render(
+      <I18nProvider>
+        <RuleSummary fields={groupFields} sections={sections}
+          rule={{ if: { field: 'trauma_dx', operator: 'equals', value: 'oui' }, then: { field: 'ao_grade', operator: 'visible' } }} />
+        <RuleSummary fields={groupFields} sections={sections} consequenceOnly
+          rule={{ if: { field: 'trauma_dx', operator: 'equals', value: 'oui' }, then: { field: 'ao_grade', operator: 'visible' } }} />
+        <RuleSummary fields={groupFields} sections={sections}
+          rule={{ if: { field: 'ao_grade', operator: 'equals', value: 'oui' }, then: { field: 'motif', operator: 'visible' } }} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText('Si Diagnostic de trauma est égal à « oui », alors Gradation AO est affichée (condition lue sur la fiche patient).'))
+      .toBeInTheDocument();
+    expect(screen.getByText('→ Gradation AO est affichée (condition lue sur la fiche patient)')).toBeInTheDocument();
+    // P2 : la phrase reste lisible, le diagnostic l'accompagne.
+    expect(screen.getByText(/alors Motif de visite est affichée\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/Affichage sans effet/)).toBeInTheDocument();
+  });
+
+  test('la liste signale une règle de bloc existante commandée par une variable de groupe', () => {
+    render(
+      <I18nProvider>
+        <RuleSummary fields={groupFields} sections={sections}
+          rule={{ if: { field: 'instable', operator: 'equals', value: 'oui' }, then: { section: 'clinique', operator: 'visible' } }} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText(/alors Clinique est affichée\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/une variable de groupe répétable ne peut pas commander l’affichage d’un bloc/)).toBeInTheDocument();
+  });
+});

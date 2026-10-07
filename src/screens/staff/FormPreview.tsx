@@ -8,6 +8,7 @@ import type { TerminologyRepository } from '../../data/terminology';
 import type { TemplateField, TemplateSection, TemplateVersion, ValidationRule } from '../../data/types';
 import { isTerminologyList, isTerminologyValue } from '../../data/types';
 import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
+import { contextHiddenFieldKeys, occurrenceContextOf } from '../../domain/occurrenceContext';
 import { findProposalField, isProposalSource, proposalKeysOf } from '../../domain/proposalField';
 import { sectionLabel } from '../../domain/templateSections';
 import { CalculatedValue, EncounterFields, SectionedFields, fieldAppliesToType } from '../member/EncounterFields';
@@ -225,8 +226,16 @@ export function FormPreview({
    * formulaire. Le libelle vient de la legende de l'etape ; la legende du tableau le repete
    * pour les technologies d'assistance.
    */
+  // L74 — l'apercu d'un groupe simule le contexte patient avec les valeurs permanentes saisies
+  // dans l'onglet « patient » : une colonne masquee par ce contexte sort du tableau.
+  const occurrenceContext = useMemo(
+    () => occurrenceContextOf(patientValues, fields, patientHidden),
+    [patientValues, fields, patientHidden],
+  );
   const renderRepeatableGroup = (section: TemplateSection) => {
-    const columns = fields.filter((field) => field.section === section.sectionKey);
+    const groupColumns = fields.filter((field) => field.section === section.sectionKey);
+    const contextHidden = contextHiddenFieldKeys(rules, groupColumns, [{ ...section, isRepeatable: false }], occurrenceContext);
+    const columns = groupColumns.filter((field) => !contextHidden.has(field.fieldKey));
     return (
       <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-800 dark:bg-violet-950/30">
         <p className="text-xs text-violet-800 dark:text-violet-200">{t('preview.repeatable_note')}</p>

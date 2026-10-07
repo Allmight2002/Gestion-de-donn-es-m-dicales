@@ -3,11 +3,14 @@ import { Plus } from 'lucide-react';
 import { useI18n } from '../../i18n/useI18n';
 import type { Encounter } from '../../data/patients';
 import type { TemplateField, TemplateSection, ValidationRule } from '../../data/types';
-import { evaluateRules, hiddenFieldKeys, validateValues, withoutHiddenValues } from '../../domain/validation';
+import { validateValues } from '../../domain/validation';
+import {
+  contextHiddenFieldKeys, EMPTY_OCCURRENCE_CONTEXT, occurrenceVerdict, type OccurrenceContext,
+} from '../../domain/occurrenceContext';
 import { forgetPrefilled, initialValuesFromDefaults, isClearedValue } from '../../domain/fieldDefaults';
 import { isSavedOccurrence, type PendingOccurrence } from '../../domain/pendingOccurrences';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
-import { MAX_OCCURRENCES, RepeatableGroupTable } from './RepeatableGroup';
+import { isEmptyOccurrenceValue, MAX_OCCURRENCES, RepeatableGroupTable } from './RepeatableGroup';
 import { repeatableLabels } from '../../domain/repeatableLabels';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 
@@ -26,6 +29,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 export function PendingRepeatableGroup({
   section, fields, rules, requireComplete = false, rows, online = true,
   onAdd, onEdit, onRemove, onDraftDirtyChange, busy = false, masked = false,
+  context = EMPTY_OCCURRENCE_CONTEXT, staleRowIds,
 }: {
   section: TemplateSection;
   /** Variables du bloc, dans l'ordre d'affichage de l'editeur. */
@@ -52,6 +56,13 @@ export function PendingRepeatableGroup({
    * se corrige. Une ligne en cours d'edition est conservee, sans etre montree.
    */
   masked?: boolean;
+  /**
+   * L74 — valeurs LOCALES non enregistrées de la fiche en création. Au rejeu, le serveur évalue
+   * la ligne contre la fiche créée juste avant, avec ces mêmes valeurs : même verdict.
+   */
+  context?: OccurrenceContext;
+  /** Lignes que la fiche a rendues incohérentes depuis leur saisie : elles sont à revoir. */
+  staleRowIds?: ReadonlySet<string>;
 }) {
   const { t } = useI18n();
   const formId = useId();
@@ -93,8 +104,20 @@ export function PendingRepeatableGroup({
   );
 
   const limitReached = rows.length >= MAX_OCCURRENCES;
-  const hidden = hiddenFieldKeys(rules ?? [], editing?.values ?? {}, formFields, formSections);
-  const removed = withoutHiddenValues(editing?.values ?? {}, hidden).removed;
+  const { hidden, removed } = occurrenceVerdict({
+    rules: rules ?? [], fields: formFields, sections: formSections, values: editing?.values ?? {}, context,
+  });
+  // L74 — meme regle que le tableau de correction : une colonne masquee par le contexte sort du
+  // tableau, sauf si une ligne y porte encore une valeur.
+  const contextHidden = useMemo(
+    () => contextHiddenFieldKeys(rules ?? [], formFields, formSections, context),
+    [rules, formFields, formSections, context],
+  );
+  const tableColumns = useMemo(
+    () => (contextHidden.size === 0 ? columns : columns.filter((column) => !contextHidden.has(column.fieldKey)
+      || rows.some((row) => !isEmptyOccurrenceValue(row.data[column.fieldKey])))),
+    [columns, contextHidden, rows],
+  );
   const labelOf = (key: string) => formFields.find((field) => field.fieldKey === key)?.label ?? key;
   const rankOf = (localId: string) => rows.findIndex((row) => row.localId === localId) + 1;
 
@@ -129,16 +152,12 @@ export function PendingRepeatableGroup({
 
   function commit(confirmed = false) {
     if (!editing) return;
-    const hiddenKeys = hiddenFieldKeys(rules ?? [], editing.values, formFields, formSections);
-    const { values: data } = withoutHiddenValues(editing.values, hiddenKeys);
     // Meme arbitrage qu'une occurrence ecrite directement : le statut SUIT la completude, il ne
     // la decrete pas. Une ligne incomplete reste en brouillon et rejoindra la file (§8.5).
-    const ruleErrors = evaluateRules(
-      (rules ?? []).map((rule) => ({ rule: rule.rule, message: rule.message, severity: rule.severity })),
-      data,
-      hiddenKeys,
-    ).blocking;
-    const complete = validateValues(formFields, data, true, hiddenKeys).length === 0 && ruleErrors.length === 0;
+    // L74 §3.1 : masquage sur `contexte ⊕ ligne`, regles et payload sur la ligne seule.
+    const { hidden: hiddenKeys, data, ruleErrors, complete } = occurrenceVerdict({
+      rules: rules ?? [], fields: formFields, sections: formSections, values: editing.values, context,
+    });
     const strict = requireComplete || complete;
     const blocking = [
       ...validateValues(formFields, data, strict, hiddenKeys).map((issue) => `${labelOf(issue.fieldKey)} : ${issue.message}`),
@@ -166,6 +185,9 @@ export function PendingRepeatableGroup({
     }
     return (
       <div className="mt-1 max-w-sm space-y-1">
+        {staleRowIds?.has(pending.localId) && (
+          <p className="text-xs font-medium text-red-700 dark:text-red-300">{t('occurrence_context.pending_stale_row')}</p>
+        )}
         <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
           {pending.deliveryState === 'unknown' ? t('form.pending_unknown') : t('form.pending_unsaved')}
         </p>
@@ -233,7 +255,7 @@ export function PendingRepeatableGroup({
       <RepeatableGroupTable
         groupLabel={groupLabel}
         rankLabel={labels.rank}
-        columns={columns}
+        columns={tableColumns}
         rows={tableRows}
         rowActions={online ? rowActions : undefined}
         rowNotice={rowNotice}

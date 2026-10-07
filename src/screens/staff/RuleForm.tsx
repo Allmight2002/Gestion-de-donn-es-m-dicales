@@ -21,6 +21,13 @@ import { Checkbox } from '../../components/Checkbox';
 import { FieldSelect } from './FieldSelect';
 import { errorMessage } from '../../lib/errorMessage';
 import { HelpDetails } from '../../components/HelpTip';
+import {
+  blockRuleVerdict,
+  fieldRuleSpace,
+  fieldRuleVerdict,
+  ruleSpaceVerdict,
+  type RuleSpaceProblem,
+} from '../../domain/ruleSpaces';
 
 type GuidedRuleKind = 'comparison' | 'conditional' | 'visibility';
 type Translate = (key: MessageKey) => string;
@@ -59,6 +66,15 @@ const CALCULATED_PROBLEM_KEYS: Record<RuleOperandProblem, MessageKey> = {
   comparison_operand: 'rule.calculated_comparison_operand',
 };
 
+/** L74d (D5) : pourquoi une regle ne peut jamais fonctionner, faute d'etre lue sur une seule fiche. */
+const SPACE_PROBLEM_KEYS: Record<RuleSpaceProblem, MessageKey> = {
+  visible_cross_space: 'rule.space_visible_cross_space',
+  required_cross_space: 'rule.space_required_cross_space',
+  comparison_cross_space: 'rule.space_comparison_cross_space',
+  block_group_driver: 'rule.space_block_group_driver',
+  block_driver_in_group: 'rule.space_block_driver_in_group',
+};
+
 function operatorLabel(
   t: Translate,
   operator: ComparisonOperator | ConditionOperator,
@@ -93,7 +109,10 @@ function conditionPhrase(t: Translate, rule: ConditionRule, fields: TemplateFiel
   return `${t('rule.if')} ${fieldLabel(fields, rule.if.field)} ${operatorLabel(t, rule.if.operator, conditionField)} ${formatRuleValue(t, rule.if.value, conditionField)}`;
 }
 
-/** « Bloc 01 est affichée » : l'effet seul. */
+/**
+ * « Bloc 01 est affichée » : l'effet seul. L74d : une condition lue sur la fiche patient pour
+ * une variable de groupe le dit, car elle s'evalue sur une autre fiche que sa cible.
+ */
 function consequencePhrase(t: Translate, rule: ConditionRule, fields: TemplateField[], sections: readonly TemplateSection[]) {
   const verb = rule.then.operator === 'visible' ? t('rule.visible') : t('rule.required');
   const sectionKey = (rule.then as { section?: unknown }).section;
@@ -103,7 +122,9 @@ function consequencePhrase(t: Translate, rule: ConditionRule, fields: TemplateFi
       label: sections.find((section) => section.sectionKey === sectionKey)?.label ?? sectionKey,
     })
     : fieldLabel(fields, (rule.then as { field: string }).field);
-  return `${target} ${verb}`;
+  const verdict = ruleSpaceVerdict(rule, fields, sections);
+  const context = verdict.usable && verdict.patientContext ? ` ${t('rule.context_sentence')}` : '';
+  return `${target} ${verb}${context}`;
 }
 
 function ruleSentence(
@@ -253,6 +274,10 @@ export function RuleSummary({ rule, fields, sections = [], consequenceOnly = fal
   // celle-ci ne peut pas fonctionner. Sa phrase se lit parfaitement et le controle n'a jamais
   // lieu : sans ce diagnostic, la liste affirmerait une garantie qui n'existe pas.
   const conflict = calculatedOperandConflict(rule, fields);
+  // L74d (D5) : une regle enregistree avant le refus a l'ecriture peut etre lue sur deux
+  // fiches et ne jamais fonctionner. Elle est SIGNALEE, jamais bloquee : la version reste
+  // modifiable et la regle garde son comportement actuel (inerte).
+  const space = ruleSpaceVerdict(rule, fields, sections);
 
   if (!parsed.ok || !parsed.value) {
     return <p className="text-xs text-amber-700">{t('rule.unreadable')}</p>;
@@ -268,6 +293,11 @@ export function RuleSummary({ rule, fields, sections = [], consequenceOnly = fal
       {conflict && (
         <p className="mt-1 text-xs text-amber-700">
           {t(CALCULATED_PROBLEM_KEYS[conflict.problem])} — {conflict.field.label}
+        </p>
+      )}
+      {!space.usable && (
+        <p className="mt-1 text-xs text-amber-700">
+          {t(SPACE_PROBLEM_KEYS[space.problem])} <HelpDetails>{t('rule.space_details')}</HelpDetails>
         </p>
       )}
     </div>
@@ -370,10 +400,15 @@ export function RuleForm({
   const [message, setMessage] = useState(initialValues.message);
   const [severity, setSeverity] = useState<RuleSeverity>(initialValues.severity);
   const baselineSnapshot = useRef(ruleFormSnapshot(initialValues));
+  // L74d (D5) : meme logique pour une regle heritee lue sur deux fiches.
+  const inheritedSpace = useMemo(
+    () => (initialRule === undefined ? null : ruleSpaceVerdict(initialRule, fields, sections)),
+    [initialRule, fields, sections],
+  );
   const [error, setError] = useState<string | null>(
     inheritedConflict
       ? `${t(CALCULATED_PROBLEM_KEYS[inheritedConflict.problem])} — ${inheritedConflict.field.label}`
-      : null,
+      : inheritedSpace && !inheritedSpace.usable ? t(SPACE_PROBLEM_KEYS[inheritedSpace.problem]) : null,
   );
 
   const currentSnapshot = useMemo(() => ruleFormSnapshot({
@@ -406,6 +441,31 @@ export function RuleForm({
     () => (sections ?? []).filter((section) => !section.parentSectionKey),
     [sections],
   );
+  // L74d (D2, D5) : les pilotes proposes dependent de la cible deja choisie. Une variable de
+  // groupe ne peut etre pilotee que depuis son groupe, ou depuis la fiche patient pour le seul
+  // verbe « afficher » ; un bloc portant un groupe, que depuis la fiche patient. Le pilote deja
+  // choisi reste propose : filtrer ne doit jamais effacer une reponse donnee — l'enregistrement,
+  // lui, explique le refus.
+  const verb = kind === 'visibility' ? 'visible' as const : 'required' as const;
+  const targetField = kind !== 'comparison' && !(kind === 'visibility' && visibilityTarget === 'section')
+    ? fieldsByKey.get(requiredField) : undefined;
+  const targetSection = kind === 'visibility' && visibilityTarget === 'section' && sectionTarget ? sectionTarget : null;
+  const driverOptions = useMemo(() => {
+    if (!targetField && !targetSection) return enteredFields;
+    return enteredFields.filter((candidate) => {
+      if (candidate.fieldKey === conditionField) return true;
+      const driver = fieldRuleSpace(candidate, sections);
+      const verdict = targetSection
+        ? blockRuleVerdict(driver, targetSection, sections)
+        : fieldRuleVerdict(verb, driver, fieldRuleSpace(targetField!, sections));
+      return verdict.usable;
+    });
+  }, [enteredFields, targetField, targetSection, verb, conditionField, sections]);
+  const patientContext = !!targetField && !!selectedConditionField && verb === 'visible'
+    && (() => {
+      const verdict = fieldRuleVerdict('visible', fieldRuleSpace(selectedConditionField, sections), fieldRuleSpace(targetField, sections));
+      return verdict.usable && verdict.patientContext;
+    })();
   const labelCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const field of fields) counts.set(field.label, (counts.get(field.label) ?? 0) + 1);
@@ -495,6 +555,13 @@ export function RuleForm({
     const conflict = calculatedOperandConflict(res.value, fields);
     if (conflict) {
       setError(`${t(CALCULATED_PROBLEM_KEYS[conflict.problem])} — ${conflict.field.label}`);
+      return;
+    }
+    // L74d (D5) : une regle lue sur deux fiches ne fonctionnerait jamais. Refusee ici avec son
+    // motif ; le serveur la refusera aussi a l'ecriture (L74e).
+    const space = ruleSpaceVerdict(res.value, fields, sections);
+    if (!space.usable) {
+      setError(t(SPACE_PROBLEM_KEYS[space.problem]));
       return;
     }
     setError(null);
@@ -637,7 +704,7 @@ export function RuleForm({
                   {...pickerLabels}
                   label={t('rule.condition_field')}
                   value={conditionField}
-                  options={enteredFields}
+                  options={driverOptions}
                   optionLabel={optionLabel}
                   onChange={(next) => { setConditionField(next); setConditionValue(''); setConditionChoices([]); setTerminologyReleaseId(''); }}
                 />
@@ -656,6 +723,11 @@ export function RuleForm({
                   </select>
                 </label>
               </div>
+              {patientContext && (
+                <p role="status" className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                  {t('rule.context_patient_driver')} <HelpDetails>{t('rule.context_patient_driver_details')}</HelpDetails>
+                </p>
+              )}
               {conditionOperator === 'contains_any' && selectedConditionField?.type === 'terminology' && (
                 <label className="flex flex-col text-xs text-slate-600">
                   {t('rule.terminology_release')}

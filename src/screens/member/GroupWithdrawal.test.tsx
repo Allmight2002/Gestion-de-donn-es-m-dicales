@@ -178,7 +178,7 @@ describe('L72e — confirmation et enregistrement du retrait', () => {
 
     const dialog = await withdrawDiagnosis(user);
     await user.click(within(dialog).getByRole('button', { name: 'Confirmer le retrait et enregistrer' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/Bloc masqué modifié entre-temps\. Rien n’est enregistré, vos saisies sont conservées/);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Occurrences modifiées entre-temps \(bloc masqué ou valeurs effacées\)\. Rien n’est enregistré, vos saisies sont conservées/);
     expect(screen.getByRole('button', { name: 'Recharger les données' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /Diagnostic/ })).toHaveValue('autre');
   });
