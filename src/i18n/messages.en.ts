@@ -2009,4 +2009,9 @@ export const messages = {
     'occurrence_context.pending_stale_row': 'To review: the record changed after this row was entered.',
     'occurrence_context.save_record_first': 'Save the record first: its changes alter the variables shown in this occurrence. Your entry is kept.',
     'occurrence_context.record_unavailable': 'Patient record unreadable: this occurrence cannot be corrected yet. Your entry is kept.',
+    'occurrence_context.save_record_and_occurrence': 'Save the record, then the occurrence',
+    'occurrence_context.save_record_with_occurrence_hint': 'This occurrence depends on unsaved changes to the record: the record will be saved first, then the occurrence.',
+    'occurrence_context.record_not_saved': 'Record not saved: the occurrence was not sent. Your entries are kept.',
+    'occurrence_context.record_saved_occurrence_failed': 'Record saved; the occurrence could not be. {reason}',
+    'occurrence_context.occurrence_retry_alone': 'An error occurred. Your entry is kept: you can save it on its own.',
   } as const satisfies MessageDictionary;

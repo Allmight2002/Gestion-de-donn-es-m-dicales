@@ -1,6 +1,6 @@
 # L74 — Variables permanentes comme contexte d'affichage des occurrences de groupe répétable
 
-- Statut : 📋 **cadré le 6 octobre 2026, arbitré le 6 octobre 2026** ; L74a (socle serveur) implémenté, en revue (§13) ; L74e (refus D5) implémenté, en revue (§14) ; L74b (effacement déclaré) implémenté, en revue (§15)
+- Statut : 📋 **cadré le 6 octobre 2026, arbitré le 6 octobre 2026** ; L74a (socle serveur) implémenté, en revue (§13) ; L74e (refus D5) implémenté, en revue (§14) ; L74b (effacement déclaré) implémenté, en revue (§15) ; L74f (fiche puis occurrence) implémenté, en revue (§16)
 - Prérequis : L66 à L72 fusionnés (groupes répétables, groupe en sous-section, retrait de bloc)
 - Surface serveur visée : `assert_rule_structure`, `assert_curated_complete` (branche rencontre),
   `guard_group_occurrence_block_visible`, fonctions de complétude (`missing_required_fields` et
@@ -661,3 +661,58 @@ rien n'est appliqué à distance.
   brouillon de curation).
 - `src/screens/member/ContextErasure.test.tsx` : calcul miroir et confirmation.
 
+
+## 16. État de L74f — fiche puis occurrence en une seule action (7 octobre 2026)
+
+Statut : **implémenté, en revue** (PR brouillon vers `develop`). Écran seul : aucune migration,
+aucune RPC nouvelle, rien d'appliqué à distance.
+
+### 16.1 Ce qui est livré
+
+- **Une seule action.** Quand la visibilité d'une occurrence dépend de modifications non
+  enregistrées de la fiche (`occurrenceAwaitsRecordSave`), `RepeatableGroup` remplace
+  « Enregistrez d'abord la fiche » par le bouton « Enregistrer la fiche puis l'occurrence »,
+  avec une ligne d'explication. Sans cette dépendance, rien ne change.
+- **Enchaînement côté écran** des écritures existantes : `EditPatient` expose
+  `saveRecordFirst`, qui passe par le chemin ordinaire de la fiche (mêmes contrôles locaux,
+  `update_patient_compatible` ou `update_patient` avec la déclaration L72e/L74b), puis
+  l'occurrence est écrite comme avant (`create_encounter` ou `update_encounter`).
+- **Ordre des confirmations.** Les contrôles et la confirmation de l'occurrence passent
+  d'abord, puis ceux de la fiche ; la confirmation de la fiche (valeurs masquées, retrait de
+  bloc, effacement L74b) s'affiche avant toute écriture. Une annulation n'écrit rien.
+- **Échecs.** Fiche refusée (validation, conflit, refus serveur) : l'occurrence ne part pas, la
+  fiche garde son message, le groupe affiche « Fiche non enregistrée : l'occurrence n'est pas
+  partie ». Fiche passée et occurrence refusée : « Fiche enregistrée ; l'occurrence n'a pas pu
+  l'être », suivi de la raison (conflit de ligne, contexte changé, ou erreur générique, jamais
+  le message brut du serveur). Le brouillon reste ouvert et repart seul.
+- **Après succès de la fiche**, l'écran reste ouvert et relit la fiche sans démonter le
+  formulaire (`load(true)`) : révision, contexte E3, empreinte, valeurs, statut et occurrences.
+  Motif vidé, tentative compatible oubliée, référence de modification réalignée. Si la relecture
+  échoue, le rechargement est proposé.
+- **Garde de sortie.** `useDirtyForm` accepte un drapeau `alsoDirty` : une occurrence ouverte
+  compte comme saisie en cours sans entrer dans la référence, pour que la réaligner après la
+  fiche ne fasse jamais oublier un brouillon d'occurrence.
+
+### 16.2 Inchangé
+
+- **Hors ligne** : la fiche ne se modifie pas hors ligne ; le formulaire d'occurrence est
+  retiré avec le message « Blocs répétables indisponibles hors ligne », rien ne part.
+- **Création de patient** (`NewPatient`, L69) : déjà une seule action ; test §9.2 n° 14 inchangé.
+- `RepeatableGroup` sans `onSaveRecordFirst` garde le refus « Enregistrez d'abord la fiche ».
+  `EditPatient` est aujourd'hui le seul appelant qui passe `savedContext`.
+
+### 16.3 Limite connue
+
+Si l'enregistrement de la fiche efface une valeur de l'occurrence même en cours de correction
+(L74b), cette occurrence change de révision : son envoi est refusé en conflit après la fiche,
+avec le message « Fiche enregistrée ; … modifiée entre-temps ». La saisie reste ; un
+rechargement de l'occurrence est nécessaire. Cas rare, honnête, sans écriture partielle cachée.
+
+### 16.4 Tests (`src/screens/member/ChainedRecordSave.test.tsx`)
+
+Chemin heureux (ordre des écritures, écran conservé, révision relue utilisée au prochain
+enregistrement) ; confirmation annulée puis confirmée (aucune écriture, puis déclaration
+L74b et occurrence) ; fiche refusée ; fiche acceptée et occurrence refusée, puis renvoi seul ;
+conflit de version sur la fiche ; conflit sur l'occurrence après la fiche ; occurrence sans
+dépendance, inchangée ; hors ligne ; chemin compatible E3 (révision et empreinte relues).
+Le test §9.2 n° 13 de L74c attend désormais le bouton enchaîné.

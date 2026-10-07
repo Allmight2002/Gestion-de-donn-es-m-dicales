@@ -11,6 +11,7 @@ import {
   contextHiddenFieldKeys, EMPTY_OCCURRENCE_CONTEXT, occurrenceAwaitsRecordSave, occurrenceVerdict, type OccurrenceContext,
 } from '../../domain/occurrenceContext';
 import { isRefreshRequiredError } from '../../lib/errorMessage';
+import type { MessageKey } from '../../i18n/messages';
 import { useNarrowViewport } from '../../lib/useNarrowViewport';
 import { repeatableLabels } from '../../domain/repeatableLabels';
 import { DeleteWithReason } from './DeleteWithReason';
@@ -27,6 +28,9 @@ type OccurrenceDraft = {
   prefilled: Set<string>;
   conflict?: boolean;
 };
+
+/** L74f — issue de l'enregistrement de la fiche demandé avant une occurrence. */
+export type RecordSaveOutcome = 'saved' | 'cancelled' | 'failed';
 
 /**
  * Borne SERVEUR des occurrences d'un groupe (§4.4). Elle est rappelee ici pour expliquer le
@@ -202,7 +206,7 @@ export function RepeatableGroup({
   section, fields, rules, requireComplete = false,
   patientId, occurrences, occurrencesError = null, onChanged, canWrite, online = true, onDirtyChange,
   occurrenceTemplateVersionId, canCreate = true, totalOccurrenceCount, masked = false,
-  context = EMPTY_OCCURRENCE_CONTEXT, savedContext,
+  context = EMPTY_OCCURRENCE_CONTEXT, savedContext, onSaveRecordFirst,
 }: {
   section: TemplateSection;
   /** Variables du bloc, dans l'ordre d'affichage de l'editeur. */
@@ -242,6 +246,11 @@ export function RepeatableGroup({
    * Contexte de la fiche ENREGISTRÉE, celui que le serveur lit. Absent : identique à `context`.
    */
   savedContext?: OccurrenceContext;
+  /**
+   * L74f — enregistre la fiche (contrôles et confirmation compris) quand l'occurrence dépend de
+   * ses modifications non enregistrées. Absent : l'occurrence attend un enregistrement manuel.
+   */
+  onSaveRecordFirst?: () => Promise<RecordSaveOutcome>;
 }) {
   const { t } = useI18n();
   const patients = usePatientRepository();
@@ -261,6 +270,8 @@ export function RepeatableGroup({
   };
   const [problems, setProblems] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // L74f — la fiche est passée, l'occurrence non : ce message reste visible même sur un conflit.
+  const [recordSavedOnly, setRecordSavedOnly] = useState(false);
   const [confirmation, setConfirmation] = useState<'cancel' | 'reload' | null>(null);
   const [hiddenConfirmation, setHiddenConfirmation] = useState(false);
   const [announcement, setAnnouncement] = useState('');
@@ -312,6 +323,10 @@ export function RepeatableGroup({
     [columns, contextHidden, rows],
   );
   const labelOf = (key: string) => formFields.find((field) => field.fieldKey === key)?.label ?? key;
+  // L74a — le serveur lit la fiche ENREGISTRÉE : une visibilité qui tient à des changements non
+  // enregistrés de la fiche demande d'enregistrer la fiche d'abord (L74f : dans la même action).
+  const awaitsRecordSave = !!draft && !!savedContext
+    && occurrenceAwaitsRecordSave(rules ?? [], draft.values, formFields, formSections, context, savedContext);
 
   const setValue = (key: string, value: unknown, remove = false) => setDraft((current) => {
     if (!current) return current;
@@ -320,14 +335,14 @@ export function RepeatableGroup({
     return { ...current, values, prefilled: forgetPrefilled(current.prefilled, key) };
   });
 
-  const close = () => { setDraft(null); setActiveKey(null); setProblems([]); setError(null); setHiddenConfirmation(false); };
+  const close = () => { setDraft(null); setActiveKey(null); setProblems([]); setError(null); setRecordSavedOnly(false); setHiddenConfirmation(false); };
   const open = (row: Encounter | null) => {
     const key = row?.id ?? 'new';
     setDrafts((current) => current[key] ? current : {
       ...current,
       [key]: { row, reason: '', ...(row ? { values: { ...row.data }, prefilled: new Set<string>() } : initialValuesFromDefaults(formFields)) },
     });
-    setActiveKey(key); setProblems([]); setError(null); setHiddenConfirmation(false);
+    setActiveKey(key); setProblems([]); setError(null); setRecordSavedOnly(false); setHiddenConfirmation(false);
   };
 
   async function save(confirmed = false) {
@@ -342,9 +357,8 @@ export function RepeatableGroup({
     const { hidden, data, ruleErrors, complete } = occurrenceVerdict({
       rules: rules ?? [], fields: formFields, sections: formSections, values: draft.values, context,
     });
-    // L74a — le serveur lit la fiche enregistree : une visibilite qui ne tient qu'a des
-    // changements non enregistres de la fiche serait refusee. Rien ne part, la saisie reste.
-    if (savedContext && occurrenceAwaitsRecordSave(rules ?? [], draft.values, formFields, formSections, context, savedContext)) {
+    // Sans enregistrement enchaîné possible, rien ne part et la saisie reste.
+    if (awaitsRecordSave && !onSaveRecordFirst) {
       setProblems([]);
       setError(t('occurrence_context.save_record_first'));
       return;
@@ -367,6 +381,18 @@ export function RepeatableGroup({
 
     setBusy(true);
     setError(null);
+    setRecordSavedOnly(false);
+    // L74f — la fiche d'abord, par son chemin ordinaire : sa confirmation éventuelle s'affiche
+    // avant toute écriture. Annulée ou refusée, rien d'autre ne part ; la fiche garde son message.
+    const chained = awaitsRecordSave && onSaveRecordFirst;
+    if (chained) {
+      const outcome = await onSaveRecordFirst();
+      if (outcome !== 'saved') {
+        if (outcome === 'failed') setError(t('occurrence_context.record_not_saved'));
+        setBusy(false);
+        return;
+      }
+    }
     try {
       if (draft.row) {
         await patients.updateEncounter(draft.row.id, data, status, draft.reason.trim(), draft.row.updatedAt ?? null);
@@ -386,13 +412,19 @@ export function RepeatableGroup({
       await onChanged();
     } catch (e) {
       // Conflit : la ligne seule est signalee, et la saisie locale reste dans le formulaire.
+      let reason: MessageKey = chained ? 'occurrence_context.occurrence_retry_alone' : 'common.error';
       if (draft.row && isRefreshRequiredError(e)) {
         setDraft((current) => current && { ...current, conflict: true });
-        setError(t('form.repeatable_conflict'));
-      } else {
-        // Unknown backend errors may contain SQL or data; never render them verbatim.
-        setError(t('common.error'));
+        reason = 'form.repeatable_conflict';
+      } else if (chained && isRefreshRequiredError(e)) {
+        reason = 'form.refresh_required';
       }
+      // Unknown backend errors may contain SQL or data; never render them verbatim.
+      if (chained) {
+        // La fiche est à jour : le brouillon reste ouvert et peut être renvoyé seul.
+        setRecordSavedOnly(true);
+        setError(t('occurrence_context.record_saved_occurrence_failed').replace('{reason}', t(reason)));
+      } else setError(t(reason));
     } finally {
       setBusy(false);
     }
@@ -546,11 +578,14 @@ export function RepeatableGroup({
           )}
           {/* Un conflit porte son bandeau sur SA ligne (§8.4) : le repeter ici dirait deux fois
               la meme chose. Le formulaire garde la resolution explicite, pas le doublon. */}
-          {error && !draft.conflict && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+          {error && (!draft.conflict || recordSavedOnly) && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+          {awaitsRecordSave && onSaveRecordFirst && !draft.conflict && (
+            <p className="text-sm text-slate-600 dark:text-slate-300">{t('occurrence_context.save_record_with_occurrence_hint')}</p>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="btn-primary" disabled={busy || draft.conflict} onClick={() => void save()}>
-              {labels.save}
+              {awaitsRecordSave && onSaveRecordFirst ? t('occurrence_context.save_record_and_occurrence') : labels.save}
             </button>
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => setConfirmation('cancel')}>{t('common.cancel')}</button>
             {draft.conflict && (
