@@ -349,7 +349,7 @@ describe('§12.5 — retrait de bloc et effacement, cascade, valeurs déjà masq
     const t1 = await createOccurrence(o.pid, 'g_t', { gt_niveau: 'g-fictif' });
     const t2 = await createOccurrence(o.pid, 'g_t', { gt_niveau: 'g-fictif' });
     const before = await snapshotOf(o.pid);
-    const withdrawn = sortById([t1, t2]).map((t) => ({ id: t.id, recordRevision: Number(t.record_revision) }));
+    const withdrawn = sortById([t1, t2] as (Row & { id: unknown })[]).map((t) => ({ id: t.id, recordRevision: Number(t.record_revision) }));
 
     const required = await refusal(legacyUpdate(o.pid, { trauma: 'non' }, before.patient.row_version));
     expect(required.detail.groups).toEqual([

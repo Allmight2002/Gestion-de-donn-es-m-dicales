@@ -220,10 +220,14 @@ export interface RecordFormContext {
  * leur groupe. Le serveur exige cette déclaration exacte (identifiant et révision) ; une
  * divergence donne un conflit sans aucune écriture.
  */
-export type GroupWithdrawalDeclaration = {
-  sectionKey: string;
-  occurrences: { id: string; recordRevision: number }[];
-}[];
+/**
+ * L72e / L74b — déclaration jointe à l'enregistrement de la fiche, une entrée par groupe :
+ * occurrences retirées avec leur bloc, OU variables effacées parce que la fiche les masque.
+ */
+export type GroupWithdrawalDeclaration = (
+  | { sectionKey: string; occurrences: { id: string; recordRevision: number }[] }
+  | { sectionKey: string; clearedFields: { id: string; recordRevision: number; fieldKeys: string[] }[] }
+)[];
 
 export interface CompatiblePatientUpdateInput {
   baseId: string;

@@ -204,12 +204,13 @@ export function EditPatient() {
     return { hidden: hiddenKeys, removed: stripped.removed, data: stripped.values };
   }, [rules, values, fields, sections]);
 
-  // L72e — un bloc masqué par cet enregistrement emporte les occurrences de son groupe : la
-  // confirmation les annonce par bloc, et l'enregistrement les déclare au serveur, qui refuse
-  // tout écart (conflit, rien n'est écrit).
+  // L72e — un bloc masqué par cet enregistrement emporte les occurrences de son groupe ; L74b —
+  // une variable d'occurrence masquée par la fiche perd sa valeur. La confirmation annonce les
+  // deux, et l'enregistrement les déclare au serveur, qui refuse tout écart (conflit, rien
+  // n'est écrit).
   const groupWithdrawal = useMemo(
-    () => pendingGroupWithdrawals(sections, rules, fields, initialValues, values, occurrences),
-    [sections, rules, fields, initialValues, values, occurrences],
+    () => pendingGroupWithdrawals(sections, rules, fields, initialValues, values, occurrences, groupFields),
+    [sections, rules, fields, initialValues, values, occurrences, groupFields],
   );
 
   // E5 : un ajout requis est annonce et compte, mais ne devient pas une obligation retroactive.
@@ -291,7 +292,8 @@ export function EditPatient() {
     setBlocking(block);
     if (block.length > 0) return;
 
-    if ((removed.length > 0 || groupWithdrawal.withdrawals.length > 0) && !confirmationOpen) {
+    if ((removed.length > 0 || groupWithdrawal.withdrawals.length > 0 || groupWithdrawal.erasures.length > 0)
+      && !confirmationOpen) {
       setConfirmationOpen(true);
       return;
     }
@@ -490,6 +492,7 @@ export function EditPatient() {
           <HiddenValuesConfirmation
             removedKeys={removed}
             withdrawals={groupWithdrawal.withdrawals}
+            erasures={groupWithdrawal.erasures}
             fields={fields}
             onConfirm={() => void persistPatient()}
             onCancel={() => setConfirmationOpen(false)}

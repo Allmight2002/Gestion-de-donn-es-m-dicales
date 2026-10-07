@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261006120000_occurrence_patient_context.sql`
-- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 447
+- Dernière migration incluse : `20261007120000_occurrence_context_withdrawal.sql`
+- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 450
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1443,6 +1443,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | completion_version_context | p_version uuid | INVOKER | sql |
 | compute_age | p_dob date, p_at date, p_unit text | INVOKER | sql |
 | confirm_base_purge_challenge | p_base_id uuid, p_challenge_id uuid, p_code text, p_operation_id uuid | DEFINER | plpgsql |
+| context_driven_field_keys | p_version uuid | INVOKER | sql |
 | copy_template_field_rows | p_source_version_id uuid, p_target_version_id uuid, p_force_patient_scope boolean, p_field_keys text[] | INVOKER | sql |
 | copy_template_fields | p_source_version_id uuid, p_target_version_id uuid, p_force_patient_scope boolean | INVOKER | plpgsql |
 | create_base_from_model | p_name text, p_specialty text, p_source_version_id uuid | DEFINER | plpgsql |
@@ -1662,6 +1663,8 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | owns_base_with_member | p_user uuid | DEFINER | sql |
 | owns_template | p_template uuid | DEFINER | sql |
 | patient_age_at | p_patient_id uuid, p_at date, p_unit text | DEFINER | plpgsql |
+| patient_context_erasure_reason | p_version_id uuid, p_group_section_key text, p_old_data jsonb, p_new_data jsonb | INVOKER | plpgsql |
+| patient_context_erasures | p_patient_id uuid, p_old_version_id uuid, p_old_data jsonb, p_new_version_id uuid, p_new_data jsonb, p_excluded text[] | INVOKER | plpgsql |
 | patient_group_occurrences | p_patient_id uuid, p_group_section_key text | INVOKER | sql |
 | patient_group_withdrawal_commit | p_patient_id uuid, p_old_data jsonb, p_declared jsonb | DEFINER | plpgsql |
 | patient_group_withdrawal_prepare | p_patient_id uuid, p_declared jsonb | DEFINER | plpgsql |
