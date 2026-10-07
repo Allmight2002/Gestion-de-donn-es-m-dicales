@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261005090000_completion_queue_version_context.sql`
-- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 445
+- Dernière migration incluse : `20261006120000_occurrence_patient_context.sql`
+- Tables : 61 · Policies RLS : 76 · Triggers : 152 · Fonctions : 447
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1400,6 +1400,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | assert_rule_structure | p_version_id uuid, p_rule jsonb | INVOKER | plpgsql |
 | assert_upload_path_scope | p_base_id uuid, p_bucket text, p_path text | DEFINER | plpgsql |
 | assert_validation_rules | p_version uuid, p_data jsonb | INVOKER | plpgsql |
+| assert_validation_rules | p_version uuid, p_data jsonb, p_hidden text[] | INVOKER | plpgsql |
 | assert_visibility_acyclic | p_version_id uuid, p_rule jsonb, p_rule_id uuid | INVOKER | plpgsql |
 | assert_work_draft_context | p_base uuid, p_kind text, p_target uuid, p_version uuid, p_entity_revision text | DEFINER | plpgsql |
 | audit_form_preparation_save_conflict | — | DEFINER | plpgsql |
@@ -1655,6 +1656,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | move_template_section | p_version_id uuid, p_section_id uuid, p_parent_key text | DEFINER | plpgsql |
 | my_todo_counts | — | INVOKER | sql |
 | normalize_template_section_order | p_version_id uuid | INVOKER | sql |
+| occurrence_evaluation_data | p_version uuid, p_patient_data jsonb, p_data jsonb | INVOKER | sql |
 | open_or_resume_form_preparation | p_base_id uuid | DEFINER | plpgsql |
 | option_key_repair_plan | p_base_id uuid | DEFINER | sql |
 | owns_base_with_member | p_user uuid | DEFINER | sql |
