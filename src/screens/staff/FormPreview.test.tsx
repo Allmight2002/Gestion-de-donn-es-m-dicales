@@ -256,3 +256,38 @@ describe('FormPreview — rang des groupes répétables (L72b)', () => {
     expect(stepsOf()).toEqual(['Bilan', 'Lésions', 'Suites']);
   });
 });
+
+// L74c — l'aperçu d'un groupe simule le contexte patient avec les valeurs permanentes saisies.
+describe('FormPreview — contexte patient des occurrences (L74)', () => {
+  test('cocher le pilote permanent fait apparaître la colonne pilotée du groupe', async () => {
+    render(
+      <I18nProvider>
+        <FormPreview
+          version={version}
+          fields={[
+            field({ id: 'f1', fieldKey: 'trauma', label: 'Trauma', type: 'boolean', scope: 'patient', section: 'examen', displayOrder: 1 }),
+            field({ id: 'f2', fieldKey: 'niveau', label: 'Niveau', section: 'lesions', displayOrder: 2 }),
+            field({ id: 'f3', fieldKey: 'gradation_ao', label: 'Gradation AO', section: 'lesions', displayOrder: 3 }),
+          ]}
+          rules={[{ id: 'r1', message: null, severity: 'block',
+            rule: { if: { field: 'trauma', operator: 'equals', value: true }, then: { field: 'gradation_ao', operator: 'visible' } } }]}
+          sections={[
+            { id: 's1', sectionKey: 'examen', label: 'Examen', displayOrder: 0, parentSectionKey: null },
+            { id: 's2', sectionKey: 'lesions', label: 'Lésions', displayOrder: 1, parentSectionKey: null, isRepeatable: true },
+          ]}
+          onClose={() => undefined}
+        />
+      </I18nProvider>,
+    );
+    await userEvent.click(screen.getByRole('tab', { name: /Fiche patient/ }));
+    const nav = () => within(screen.getByRole('navigation', { name: 'Sommaire du formulaire' }));
+
+    await userEvent.click(nav().getByRole('button', { name: 'Lésions' }));
+    expect(within(screen.getByRole('table', { name: 'Lésions' })).queryByRole('columnheader', { name: 'Gradation AO' })).toBeNull();
+
+    await userEvent.click(nav().getByRole('button', { name: 'Examen' }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /Trauma/ }));
+    await userEvent.click(nav().getByRole('button', { name: 'Lésions' }));
+    expect(within(screen.getByRole('table', { name: 'Lésions' })).getByRole('columnheader', { name: 'Gradation AO' })).toBeInTheDocument();
+  });
+});

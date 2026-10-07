@@ -8,7 +8,7 @@
 // Ce module tient les DEUX regles qui empechent le lot de changer quoi que ce soit a
 // l'existant : l'ordre de repli et le libelle de repli.
 
-import type { TemplateCommonLayout, TemplateField, TemplateSection, ValidationRule } from '../data/types';
+import type { TemplateCommonLayout, TemplateField, TemplateSection } from '../data/types';
 import { visibilityRulesOf } from './templateRules';
 import { visibilityConditionHolds } from './validation';
 
@@ -461,46 +461,6 @@ export function repeatableGroupFields<T extends Pick<TemplateField, 'fieldKey' |
 ): T[] {
   const keys = repeatableFieldKeys(fields, sections);
   return fields.filter((field) => field.scope === 'encounter' && keys.has(field.fieldKey));
-}
-
-/**
- * Regles dont tous les operandes appartiennent au meme bloc repetable.
- *
- * Une occurrence ne dispose que de ses propres valeurs. Une regle qui depend d'un champ d'un
- * autre bloc ou d'une rencontre ordinaire ne doit donc ni masquer ni bloquer ce formulaire.
- */
-export function rulesForRepeatableSection(
-  rules: readonly ValidationRule[],
-  fields: readonly Pick<TemplateField, 'fieldKey' | 'section'>[],
-  sectionKey: string,
-): ValidationRule[] {
-  const fieldKeys = new Set(
-    fields.filter((field) => sectionKeyOf(field) === sectionKey).map((field) => field.fieldKey),
-  );
-  if (fieldKeys.size === 0) return [];
-
-  const fieldsReferencedBy = (rule: unknown): string[] => {
-    if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) return [];
-    const source = rule as Record<string, unknown>;
-    if ('if' in source && 'then' in source) {
-      const condition = typeof source.if === 'object' && source.if !== null
-        ? source.if as Record<string, unknown>
-        : null;
-      const outcome = typeof source.then === 'object' && source.then !== null
-        ? source.then as Record<string, unknown>
-        : null;
-      return [condition?.field, outcome?.field].filter((key): key is string => typeof key === 'string');
-    }
-    if ('operator' in source && 'left_field' in source && 'right_field' in source) {
-      return [source.left_field, source.right_field].filter((key): key is string => typeof key === 'string');
-    }
-    return [];
-  };
-
-  return rules.filter((rule) => {
-    const references = fieldsReferencedBy(rule.rule);
-    return references.length > 0 && references.every((key) => fieldKeys.has(key));
-  });
 }
 
 /**
