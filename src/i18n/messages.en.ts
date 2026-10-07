@@ -1994,4 +1994,5 @@ export const messages = {
     'entryform.open_manage': 'Manage entry forms',
     'occurrence_context.pending_stale': 'The record changed after some occurrences were entered: review the flagged rows before saving.',
     'occurrence_context.pending_stale_row': 'To review: the record changed after this row was entered.',
+    'occurrence_context.save_record_first': 'Save the record first: its changes alter the variables shown in this occurrence. Your entry is kept.',
   } as const satisfies MessageDictionary;

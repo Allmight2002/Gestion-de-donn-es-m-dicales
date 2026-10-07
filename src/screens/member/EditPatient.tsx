@@ -214,6 +214,11 @@ export function EditPatient() {
     () => occurrenceContextOf(values, groupContextFields, hidden),
     [values, groupContextFields, hidden],
   );
+  // Contexte de la fiche ENREGISTREE : c'est celui que le serveur lit pour juger une occurrence.
+  const savedOccurrenceContext = useMemo(
+    () => occurrenceContextOf(initialValues, groupContextFields, hiddenFieldKeys(rules, initialValues, fields, sections)),
+    [initialValues, groupContextFields, rules, fields, sections],
+  );
 
   // L72e — un bloc masqué par cet enregistrement emporte les occurrences de son groupe : la
   // confirmation les annonce par bloc, et l'enregistrement les déclare au serveur, qui refuse
@@ -385,6 +390,7 @@ export function EditPatient() {
       fields={groupFields.filter((field) => field.section !== null && sectionKeyOf(field) === section.sectionKey)}
       rules={groupRules}
       context={occurrenceContext}
+      savedContext={savedOccurrenceContext}
       patientId={patientId ?? null}
       occurrences={occurrences}
       occurrencesError={occurrencesError}

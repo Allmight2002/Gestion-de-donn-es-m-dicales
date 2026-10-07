@@ -152,6 +152,24 @@ export function occurrenceVerdict({
 }
 
 /**
+ * Le serveur juge une occurrence contre la fiche ENREGISTRÉE (L74a). Tant que la fiche porte des
+ * changements non enregistrés qui modifient la visibilité de cette occurrence, l'écrire serait
+ * refusé : la fiche doit être enregistrée d'abord.
+ */
+export function occurrenceAwaitsRecordSave(
+  rules: readonly { rule: unknown }[],
+  values: Readonly<Record<string, unknown>>,
+  fields: readonly TemplateField[],
+  sections: readonly TemplateSection[] | null | undefined,
+  current: OccurrenceContext,
+  saved: OccurrenceContext,
+): boolean {
+  const now = occurrenceHiddenFieldKeys(rules, values, fields, sections, current);
+  const then = occurrenceHiddenFieldKeys(rules, values, fields, sections, saved);
+  return fields.some((field) => now.has(field.fieldKey) !== then.has(field.fieldKey));
+}
+
+/**
  * Une ligne déjà saisie que la fiche a rendue incohérente : une de ses valeurs est désormais
  * masquée, ou elle se disait complète et ne l'est plus. Le serveur la refuserait au rejeu ; elle
  * doit être revue avant l'enregistrement, jamais corrigée en silence.

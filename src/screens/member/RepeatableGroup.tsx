@@ -8,7 +8,7 @@ import {
 } from '../../data/types';
 import { isMissing, missingCodeOf, validateValues } from '../../domain/validation';
 import {
-  contextHiddenFieldKeys, EMPTY_OCCURRENCE_CONTEXT, occurrenceVerdict, type OccurrenceContext,
+  contextHiddenFieldKeys, EMPTY_OCCURRENCE_CONTEXT, occurrenceAwaitsRecordSave, occurrenceVerdict, type OccurrenceContext,
 } from '../../domain/occurrenceContext';
 import { isRefreshRequiredError } from '../../lib/errorMessage';
 import { useNarrowViewport } from '../../lib/useNarrowViewport';
@@ -202,7 +202,7 @@ export function RepeatableGroup({
   section, fields, rules, requireComplete = false,
   patientId, occurrences, occurrencesError = null, onChanged, canWrite, online = true, onDirtyChange,
   occurrenceTemplateVersionId, canCreate = true, totalOccurrenceCount, masked = false,
-  context = EMPTY_OCCURRENCE_CONTEXT,
+  context = EMPTY_OCCURRENCE_CONTEXT, savedContext,
 }: {
   section: TemplateSection;
   /** Variables du bloc, dans l'ordre d'affichage de l'editeur. */
@@ -238,6 +238,10 @@ export function RepeatableGroup({
    * la visibilité des variables de l'occurrence et ne sont jamais enregistrées avec elle.
    */
   context?: OccurrenceContext;
+  /**
+   * Contexte de la fiche ENREGISTRÉE, celui que le serveur lit. Absent : identique à `context`.
+   */
+  savedContext?: OccurrenceContext;
 }) {
   const { t } = useI18n();
   const patients = usePatientRepository();
@@ -338,6 +342,13 @@ export function RepeatableGroup({
     const { hidden, data, ruleErrors, complete } = occurrenceVerdict({
       rules: rules ?? [], fields: formFields, sections: formSections, values: draft.values, context,
     });
+    // L74a — le serveur lit la fiche enregistree : une visibilite qui ne tient qu'a des
+    // changements non enregistres de la fiche serait refusee. Rien ne part, la saisie reste.
+    if (savedContext && occurrenceAwaitsRecordSave(rules ?? [], draft.values, formFields, formSections, context, savedContext)) {
+      setProblems([]);
+      setError(t('occurrence_context.save_record_first'));
+      return;
+    }
     const status = complete ? 'complete' : 'draft';
     const strict = requireComplete || complete;
     const blocking = [

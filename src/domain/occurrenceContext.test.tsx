@@ -4,7 +4,7 @@ import type { TemplateField, TemplateSection, ValidationRule } from '../data/typ
 import { hiddenFieldKeys } from './validation';
 import {
   contextHiddenFieldKeys, EMPTY_OCCURRENCE_CONTEXT, occurrenceContextOf, occurrenceEvaluationData,
-  occurrenceHiddenFieldKeys, occurrenceNeedsReview, occurrenceVerdict,
+  occurrenceAwaitsRecordSave, occurrenceHiddenFieldKeys, occurrenceNeedsReview, occurrenceVerdict,
 } from './occurrenceContext';
 
 function field(p: Partial<TemplateField> & Pick<TemplateField, 'fieldKey' | 'type' | 'scope'>): TemplateField {
@@ -141,5 +141,15 @@ describe('occurrenceNeedsReview — lignes tamponnées à la création (§9.2 te
     expect(occurrenceNeedsReview(withoutGrade, { ...evaluation, context: off })).toBe(false);
     expect(occurrenceNeedsReview(withoutGrade, { ...evaluation, context: on })).toBe(true);
     expect(occurrenceNeedsReview({ ...withoutGrade, validationStatus: 'draft' }, { ...evaluation, context: on })).toBe(false);
+  });
+});
+
+describe('occurrenceAwaitsRecordSave — le serveur lit la fiche enregistrée (L74a)', () => {
+  test('n’attend la fiche que si sa modification change la visibilité de l’occurrence', () => {
+    const on = occurrenceContextOf({ trauma: true }, allFields);
+    const off = occurrenceContextOf({ trauma: false }, allFields);
+    expect(occurrenceAwaitsRecordSave([showGradation], { niveau: 'C5' }, groupFields, formSections, on, off)).toBe(true);
+    expect(occurrenceAwaitsRecordSave([showGradation], { niveau: 'C5' }, groupFields, formSections, on, on)).toBe(false);
+    expect(occurrenceAwaitsRecordSave([cascade], { niveau: 'C5' }, groupFields, formSections, on, off)).toBe(false);
   });
 });

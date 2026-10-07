@@ -122,7 +122,7 @@ async function openStep(user: ReturnType<typeof userEvent.setup>, name: string) 
 }
 
 describe('L74c — contexte patient des occurrences', () => {
-  test('§9.2 test 13 et 15 — cocher le pilote fait apparaître colonne et champ sans recharger ; le payload reste l’occurrence seule', async () => {
+  test('§9.2 test 13 — cocher le pilote fait apparaître colonne et champ sans recharger', async () => {
     const user = userEvent.setup();
     const createEncounter = vi.fn(async (_patientId: string, _input: NewEncounterInput) => ({ id: 'o9' }));
     const getPatient = vi.fn();
@@ -148,8 +148,25 @@ describe('L74c — contexte patient des occurrences', () => {
     await user.type(screen.getByLabelText(/Gradation AO/), 'B');
     expect(getPatient).toHaveBeenCalledTimes(1);
 
+    // Le serveur lit la fiche ENREGISTREE (L74a) : tant que « Trauma » n'est pas enregistre,
+    // l'occurrence ne part pas, et la saisie reste dans le formulaire.
     await user.click(screen.getByRole('button', { name: 'Enregistrer l’occurrence' }));
-    expect(createEncounter).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Enregistrez d’abord la fiche/)).toBeInTheDocument();
+    expect(createEncounter).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Gradation AO/)).toHaveValue('B');
+  });
+
+  test('§9.2 test 15 — fiche enregistrée avec le pilote : le payload est l’occurrence seule', async () => {
+    const user = userEvent.setup();
+    const createEncounter = vi.fn(async (_patientId: string, _input: NewEncounterInput) => ({ id: 'o9' }));
+    renderAt('/bases/b1/patients/p1/edit', makePatients({ trauma: true }, [], { createEncounter }));
+
+    await openStep(user, 'Lésions');
+    await user.click(await screen.findByRole('button', { name: 'Ajouter une occurrence' }));
+    await user.type(screen.getByLabelText(/Niveau/), 'T3');
+    await user.type(screen.getByLabelText(/Gradation AO/), 'B');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer l’occurrence' }));
+    await waitFor(() => expect(createEncounter).toHaveBeenCalledTimes(1));
     const payload = createEncounter.mock.calls[0][1].data;
     expect(payload).toEqual({ niveau: 'T3', gradation_ao: 'B' });
     expect(payload).not.toHaveProperty('trauma');

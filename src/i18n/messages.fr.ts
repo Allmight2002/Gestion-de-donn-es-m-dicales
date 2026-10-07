@@ -2010,6 +2010,7 @@ export const messages = {
     'entryform.open_manage': 'Gérer les formulaires de saisie',
     'occurrence_context.pending_stale': 'La fiche a changé depuis la saisie de certaines occurrences : revoyez les lignes signalées avant d’enregistrer.',
     'occurrence_context.pending_stale_row': 'À revoir : la fiche a changé depuis la saisie de cette ligne.',
+    'occurrence_context.save_record_first': 'Enregistrez d’abord la fiche : ses modifications changent les variables affichées dans cette occurrence. Votre saisie est conservée.',
   } as const;
 
 export type MessageKey = keyof typeof messages;
