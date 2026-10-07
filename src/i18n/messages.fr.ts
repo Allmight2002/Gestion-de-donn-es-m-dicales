@@ -2025,6 +2025,11 @@ export const messages = {
     'occurrence_context.pending_stale_row': 'À revoir : la fiche a changé depuis la saisie de cette ligne.',
     'occurrence_context.save_record_first': 'Enregistrez d’abord la fiche : ses modifications changent les variables affichées dans cette occurrence. Votre saisie est conservée.',
     'occurrence_context.record_unavailable': 'Fiche du patient illisible : occurrence non corrigeable pour l’instant. Votre saisie est conservée.',
+    'occurrence_context.save_record_and_occurrence': 'Enregistrer la fiche puis l’occurrence',
+    'occurrence_context.save_record_with_occurrence_hint': 'Cette occurrence dépend de modifications non enregistrées de la fiche : la fiche sera enregistrée d’abord, puis l’occurrence.',
+    'occurrence_context.record_not_saved': 'Fiche non enregistrée : l’occurrence n’est pas partie. Vos saisies sont conservées.',
+    'occurrence_context.record_saved_occurrence_failed': 'Fiche enregistrée ; l’occurrence n’a pas pu l’être. {reason}',
+    'occurrence_context.occurrence_retry_alone': 'Une erreur est survenue. Votre saisie est conservée : vous pouvez l’enregistrer seule.',
   } as const;
 
 export type MessageKey = keyof typeof messages;

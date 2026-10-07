@@ -13,7 +13,7 @@ import { validateValues, evaluateRules, hiddenFieldKeys, withoutHiddenValues } f
 import { saveOnCtrlEnter } from '../../lib/formKeyboard';
 import { useToast } from '../../components/Toast';
 import { EncounterFields, HiddenValuesConfirmation, HiddenValuesNotice } from './EncounterFields';
-import { RepeatableGroup } from './RepeatableGroup';
+import { RepeatableGroup, type RecordSaveOutcome } from './RepeatableGroup';
 import { occurrenceContextOf } from '../../domain/occurrenceContext';
 import { maskedRepeatableSectionKeys, repeatableGroupFields, repeatableSectionsOf, sectionKeyOf } from '../../domain/templateSections';
 import { pendingGroupWithdrawals } from '../../domain/groupWithdrawal';
@@ -77,6 +77,9 @@ export function EditPatient() {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [reloadRequired, setReloadRequired] = useState(false);
   const compatibleAttempt = useRef<{ requestKey: string; operationId: string } | null>(null);
+  // L74f — enregistrement de la fiche demandé par une occurrence qui en dépend : la promesse
+  // reste en attente pendant la confirmation éventuelle, puis dit si la fiche est enregistrée.
+  const chainedSave = useRef<((outcome: RecordSaveOutcome) => void) | null>(null);
   // L68 — blocs repetables de la fiche. Une occurrence est une rencontre a part entiere : elle
   // s'ecrit seule, avec son propre verrou, et ne participe jamais a l'enregistrement de la fiche.
   const [canWrite, setCanWrite] = useState(false);
@@ -95,7 +98,7 @@ export function EditPatient() {
   // Une occurrence ouverte et non enregistree compte comme une saisie en cours : quitter
   // l'ecran doit la signaler, comme n'importe quel champ modifie de la fiche.
   const groupHasDraft = Object.values(groupDirty).some(Boolean);
-  const navigation = useDirtyForm({ values, status, reason, groupHasDraft }, !loading && diagnosisVersionId !== null, `${baseId}:${patientId}`);
+  const navigation = useDirtyForm({ values, status, reason }, !loading && diagnosisVersionId !== null, `${baseId}:${patientId}`, groupHasDraft);
   // Le tableau d'occurrences se charge A PART : le reste du formulaire ne l'attend pas, et une
   // occurrence ecrite le rafraichit seule (§8.4).
   const reloadOccurrences = useCallback(async () => {
@@ -119,9 +122,11 @@ export function EditPatient() {
     onRestore: (payload) => { setValues(payload.values); setStatus(initialStatus === 'curated' ? 'curated' : payload.status ?? 'draft'); setReason(payload.reason ?? ''); },
   });
 
-  const load = useCallback(async () => {
+  // `quiet` : relecture après un enregistrement enchaîné (L74f). Le formulaire reste monté, donc
+  // le brouillon d'occurrence ouvert aussi ; seuls l'état chargé et les occurrences sont relus.
+  const load = useCallback(async (quiet = false) => {
     if (!baseId || !patientId) return;
-    setLoading(true);
+    if (!quiet) setLoading(true);
     setReloadRequired(false);
     try {
       const contextPromise = patients.getPatientFormContext
@@ -193,8 +198,10 @@ export function EditPatient() {
       loadedFor.current = `${baseId}:${patientId}`;
     } catch (e) {
       setError(msg(e));
+      // Fiche déjà enregistrée mais état local périmé : le prochain envoi partirait en conflit.
+      if (quiet) setReloadRequired(true);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseId, patientId, bases, templates, patients, reloadOccurrences]);
@@ -280,8 +287,28 @@ export function EditPatient() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!baseId || !patientId) return;
-    if (busy) return;
+    await submitPatient();
+  }
+
+  function settleChainedSave(outcome: RecordSaveOutcome) {
+    const resolve = chainedSave.current;
+    chainedSave.current = null;
+    resolve?.(outcome);
+  }
+
+  // L74f — une occurrence dont la visibilité dépend de modifications non enregistrées de la
+  // fiche demande d'abord l'enregistrement de la fiche, par le chemin ordinaire : mêmes
+  // contrôles, même confirmation (avant toute écriture), même déclaration L72e/L74b.
+  function saveRecordFirst(): Promise<RecordSaveOutcome> {
+    if (busy || chainedSave.current || !online) return Promise.resolve('failed');
+    return new Promise((resolve) => {
+      chainedSave.current = resolve;
+      void submitPatient();
+    });
+  }
+
+  async function submitPatient() {
+    if (!baseId || !patientId || busy) { settleChainedSave('failed'); return; }
     if (work.locked) { await persistPatient(); return; }
     const block = shortForm ? [
       // Formulaire court : seuls SES indispensables bloquent. Les requis du formulaire complet
@@ -306,7 +333,7 @@ export function EditPatient() {
       ).blocking : []),
     ];
     setBlocking(block);
-    if (block.length > 0) return;
+    if (block.length > 0) { settleChainedSave('failed'); return; }
 
     if ((removed.length > 0 || groupWithdrawal.withdrawals.length > 0 || groupWithdrawal.erasures.length > 0)
       && !confirmationOpen) {
@@ -317,10 +344,11 @@ export function EditPatient() {
   }
 
   async function persistPatient() {
-    if (!patientId) return;
+    if (!patientId) { settleChainedSave('failed'); return; }
     setConfirmationOpen(false);
 
     setBusy(true);
+    let saved = false;
     try {
       if (baseId && recordContext && patients.updatePatientCompatible) {
         const patch = buildCompatiblePatch(
@@ -350,9 +378,19 @@ export function EditPatient() {
       else if (groupWithdrawal.declaration) {
         await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion, groupWithdrawal.declaration);
       } else await patients.updatePatientData(patientId, submittedData, status, reason.trim(), baseVersion);
-      navigation.markClean();
+      saved = true;
       toast(t('toast.patient_saved')); // UI-2
-      back();
+      if (chainedSave.current) {
+        // L74f — l'occurrence part ensuite : on reste sur l'écran, avec la fiche relue (révision,
+        // contexte E3, empreinte) pour que les enregistrements suivants ne partent pas en conflit.
+        compatibleAttempt.current = null;
+        setReason('');
+        await load(true);
+        navigation.resetBaseline();
+      } else {
+        navigation.markClean();
+        back();
+      }
     } catch (e) {
       const detail = e as { message?: string };
       const code = structuredErrorCode(e);
@@ -374,6 +412,7 @@ export function EditPatient() {
       }
     } finally {
       setBusy(false);
+      settleChainedSave(saved ? 'saved' : 'failed');
     }
   }
 
@@ -397,6 +436,7 @@ export function EditPatient() {
       occurrences={occurrences}
       occurrencesError={occurrencesError}
       onChanged={reloadOccurrences}
+      onSaveRecordFirst={saveRecordFirst}
       onDirtyChange={(dirty) => setGroupDirty((current) => current[section.sectionKey] === dirty
         ? current
         : { ...current, [section.sectionKey]: dirty })}
@@ -513,7 +553,7 @@ export function EditPatient() {
             erasures={groupWithdrawal.erasures}
             fields={fields}
             onConfirm={() => void persistPatient()}
-            onCancel={() => setConfirmationOpen(false)}
+            onCancel={() => { setConfirmationOpen(false); settleChainedSave('cancelled'); }}
           />
         )}
 
