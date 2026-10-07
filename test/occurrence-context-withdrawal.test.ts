@@ -73,7 +73,8 @@ const showSection = (driver: string, value: string, section: string) =>
 // - cascade interne au groupe : `ao` = C fait apparaître `ao_detail` ;
 // - `cote` est piloté par `lateral` (permanent) ; `note` n'est piloté par rien.
 // `withContext = false` : même structure, sans règle permanent → groupe (version d'avant L74).
-async function buildVersion(v: string, { withContext = true, aoRequired = false, internalCote = false } = {}) {
+async function buildVersion(v: string,
+  { withContext = true, aoRequired = false, internalCote = false, requiredRule = false } = {}) {
   await addField(v, 'trauma', 'Trauma fictif', null, 'patient');
   await addField(v, 'lateral', 'Latéralité fictive', null, 'patient');
   await addField(v, 'divers', 'Divers', null, 'patient');
@@ -93,6 +94,9 @@ async function buildVersion(v: string, { withContext = true, aoRequired = false,
     await addRule(v, showField('lateral', 'oui', 'cote'));
   }
   if (internalCote) await addRule(v, showField('note', 'visible', 'cote'));
+  // Règle bloquante de la version : `note` = x exige `ao`.
+  if (requiredRule) await addRule(v, { if: { field: 'note', operator: 'equals', value: 'x' },
+    then: { field: 'ao', operator: 'required' } });
 }
 
 async function newBase(v = version): Promise<string> {
@@ -502,27 +506,62 @@ describe('§12.5 — chemins non déclarés et changement de version', () => {
 });
 
 describe('§12.3 — occurrence ancienne, brouillons', () => {
-  test('occurrence ancienne que ses propres contrôles refusent : code qui la nomme, rien n\'est écrit', async () => {
-    // L'occurrence est née « complète » dans une version sans règle de contexte où `ao` est
-    // requise ; la base passe ensuite à une version où `trauma` pilote `ao`.
-    const strict = await newVersion(5);
-    await buildVersion(strict, { withContext: false, aoRequired: true });
+  // L'occurrence est née dans une version sans règle de contexte où `ao` est requise ; la
+  // base passe ensuite à une version où `trauma` pilote `ao` (patient `trauma` coché).
+  async function oldOccurrences(number: number, statuses: string[], options: { requiredRule?: boolean } = {}) {
+    const strict = await newVersion(number);
+    await buildVersion(strict, { withContext: false, aoRequired: true, ...options });
     const localBase = await newBase(strict);
     const pid = await newPatient({ trauma: 'oui' }, localBase, strict);
-    const old = await createOccurrence(pid, 'lesions', { ao: 'fictif-A' }, 'complete');
-    const contextual = await newVersion(6);
-    await buildVersion(contextual, { aoRequired: true });
+    const rows = [];
+    for (const status of statuses) {
+      rows.push(await createOccurrence(pid, 'lesions',
+        options.requiredRule ? { ao: 'fictif-A', note: 'x' } : { ao: 'fictif-A' }, status));
+    }
+    const contextual = await newVersion(number + 1);
+    await buildVersion(contextual, { aoRequired: true, ...options });
     await rowsAs(alice, 'select * from public.set_base_template_version($1,$2)', [localBase, contextual]);
-
-    const before = await snapshotOf(pid);
+    const items = sortById(rows.map((r) => ({ id: r.id, fieldKeys: ['ao'] })));
     const declaration = [{ sectionKey: 'lesions',
-      clearedFields: [{ id: old.id, recordRevision: await revisionOf(old.id), fieldKeys: ['ao'] }] }];
+      clearedFields: cleared(items, await Promise.all(items.map((i) => revisionOf(i.id)))) }];
+    return { pid, rows, declaration };
+  }
+
+  test('occurrence ancienne « complète » ou « validée » : l\'obligation historique ne bloque pas l\'effacement', async () => {
+    const { pid, rows, declaration } = await oldOccurrences(5, ['complete', 'curated']);
+    await declaredUpdate(pid, { trauma: 'non' }, (await patientRow(pid)).row_version, declaration);
+    for (const [i, status] of ['complete', 'curated'].entries()) {
+      const row = (await db.admin.query('select data, validation_status from public.encounter where id=$1',
+        [rows[i].id])).rows[0];
+      expect(row).toEqual({ data: {}, validation_status: status });
+    }
+    expect(Number((await db.admin.query(
+      `select count(*)::int n from public.field_change_log where entity_id = any($1::uuid[])
+          and source='visibility_withdrawal'`, [rows.map((r) => r.id)])).rows[0].n)).toBe(2);
+  });
+
+  test('occurrence qu\'un autre contrôle refuse (règle bloquante) : code qui la nomme, rien n\'est écrit', async () => {
+    const { pid, rows, declaration } = await oldOccurrences(7, ['curated'], { requiredRule: true });
+    const before = await snapshotOf(pid);
     const blocked = await refusal(declaredUpdate(pid, { trauma: 'non' }, before.patient.row_version, declaration));
     expect(blocked.message).toBe('GROUP_WITHDRAWAL_OCCURRENCE_BLOCKED');
     expect(blocked.detail).toEqual({ code: 'GROUP_WITHDRAWAL_OCCURRENCE_BLOCKED', action: 'reject',
-      sectionKey: 'lesions', id: old.id });
+      sectionKey: 'lesions', id: rows[0].id });
     for (const clinical of CLINICAL) expect(blocked.raw).not.toContain(clinical);
     expect(await snapshotOf(pid)).toEqual(before);
+  });
+
+  test('hors effacement déclaré, l\'obligation historique s\'applique toujours', async () => {
+    const { rows } = await oldOccurrences(9, ['complete']);
+    // Retirer `ao` par une correction ordinaire reste refusé.
+    await expect(db.admin.query(`update public.encounter set data = data - 'ao' where id=$1`, [rows[0].id]))
+      .rejects.toThrow();
+    // Le réglage seul ne suffit pas pour une écriture qui modifie aussi une valeur.
+    await expect(db.admin.query(
+      `select set_config('app.context_erasure_encounter', $1::text, false);
+       update public.encounter set data = (data - 'ao') || '{"note":"autre"}'::jsonb where id=$1`,
+      [rows[0].id])).rejects.toThrow();
+    await db.admin.query(`select set_config('app.context_erasure_encounter', '', false)`);
   });
 
   test('brouillon de travail d\'une occurrence lu avant l\'effacement : refusé comme périmé', async () => {
@@ -539,7 +578,8 @@ describe('§12.3 — occurrence ancienne, brouillons', () => {
     const afterErasure = await occurrence(o.a.id);
     const stale = await refusal(rowsAs(alice, 'select public.commit_work_draft($1,$2,$3,$4::jsonb) as r',
       [draft, 1, uuid(), null]));
-    expect(stale.raw).toMatch(/CONFLIT|STALE|conflict/i);
+    expect(stale.message).toBe('DRAFT_CONTEXT_CHANGED');
+    expect(stale.detail).toMatchObject({ action: 'refresh_required' });
     expect(await occurrence(o.a.id)).toEqual(afterErasure);
   });
 

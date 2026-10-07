@@ -25,14 +25,18 @@
 --    l'effacement (ancienne valeur, nouvelle nulle, source `visibility_withdrawal`,
 --    motif engendré qui nomme la variable pilote par son LIBELLÉ), puis retrait des
 --    clés de `encounter.data`. Une occurrence que ses propres contrôles d'écriture
---    refusent (ancienne, incohérente) arrête tout avec un code qui la nomme.
+--    refusent arrête tout avec un code qui la nomme. Seul le contrôle d'obligation de
+--    la version HISTORIQUE est levé pour un effacement seul (section 5) : sans cela,
+--    une occurrence validée née dans une version qui exigeait la variable rendrait la
+--    fiche patient impossible à corriger (une donnée validée ne repasse pas en brouillon).
 -- 4. `guard_base_version_group_withdrawal` : un changement de version qui provoquerait
 --    des effacements est refusé, avec des comptes seulement.
 --
 -- Aucun message, motif ou détail ne contient de valeur clinique : identifiants,
 -- révisions, clés et libellés de structure seulement.
 --
--- Retour arrière : réappliquer les corps de 20260924090000 pour
+-- Retour arrière : réappliquer le corps de 20261006120000 pour `assert_curated_complete`,
+-- les corps de 20260924090000 pour
 -- `guard_patient_group_withdrawal`, `guard_base_version_group_withdrawal`,
 -- `patient_group_withdrawal_prepare` et `patient_group_withdrawal_commit`, puis
 -- supprimer `patient_context_erasures`, `context_driven_field_keys` et
@@ -548,6 +552,7 @@ begin
         cross join lateral unnest(v_fields) as k(key)
        where e.id = v_id
        order by k.key;
+      perform set_config('app.context_erasure_encounter', v_id::text, true);
       begin
         update public.encounter
            set data = data - v_fields
@@ -556,10 +561,142 @@ begin
         perform public.group_withdrawal_error('GROUP_WITHDRAWAL_OCCURRENCE_BLOCKED',
           jsonb_build_object('sectionKey', v_key, 'id', v_id));
       end;
+      perform set_config('app.context_erasure_encounter', '', true);
     end loop;
   end loop;
 end $$;
 revoke all on function public.patient_group_withdrawal_commit(uuid, jsonb, jsonb) from public, anon, authenticated;
+
+-- -----------------------------------------------------------------------------
+-- 5. Écriture d'un effacement : seul le contrôle d'obligation historique est levé
+-- -----------------------------------------------------------------------------
+
+-- assert_curated_complete : corps de 20261006120000 (L74a). Une seule différence : la
+-- branche occurrence reconnaît l'effacement déclaré (réglage local à la transaction,
+-- posé par `patient_group_withdrawal_commit` pour CETTE occurrence, et écriture qui
+-- ne fait que retirer des clés) et ne rejoue pas alors `assert_required_complete` sur
+-- la version historique. Valeurs masquées, valeurs connues, validation des valeurs et
+-- règles bloquantes sont rejouées comme avant. Le réglage n'ouvre rien d'autre :
+-- aucune fonction exposée ne permet à un compte de le poser, et une écriture qui
+-- modifierait ou ajouterait une valeur, ou changerait le statut, n'est pas reconnue.
+create or replace function public.assert_curated_complete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_scope text := case when tg_table_name = 'patient' then 'patient' else 'encounter' end;
+  v_base_id uuid;
+  v_active_version uuid;
+  v_historical_version uuid := new.template_version_id;
+  v_patient_data jsonb;
+  v_historical_eval jsonb := new.data;
+  v_active_eval jsonb := new.data;
+  v_old_eval jsonb;
+  v_context_erasure boolean := false;
+begin
+  if v_scope = 'patient' then
+    v_base_id := new.base_id;
+  else
+    v_base_id := public.base_of_patient(new.patient_id);
+  end if;
+
+  select b.current_template_version_id into v_active_version
+    from public.base b
+   where b.id = v_base_id and b.deleted_at is null;
+  v_active_version := coalesce(v_active_version, v_historical_version);
+
+  if tg_op = 'UPDATE' then v_old_eval := old.data; end if;
+  -- `new.group_section_key` n'existe que sur une rencontre : test imbriqué.
+  if v_scope = 'encounter' then
+    if new.group_section_key is not null then
+      if tg_op = 'UPDATE' and old.deleted_at is null and new.deleted_at is not null
+         and new.data is not distinct from old.data
+         and new.validation_status is not distinct from old.validation_status then
+        return new;
+      end if;
+      -- L74b : effacement déclaré d'une valeur masquée par la fiche. Reconnu seulement si
+      -- l'écriture RETIRE des clés sans rien changer d'autre (données restantes, statut).
+      v_context_erasure := tg_op = 'UPDATE'
+        and coalesce(current_setting('app.context_erasure_encounter', true) = new.id::text, false)
+        and old.deleted_at is null and new.deleted_at is null
+        and new.validation_status is not distinct from old.validation_status
+        and jsonb_typeof(old.data) = 'object' and jsonb_typeof(new.data) = 'object'
+        and new.data = old.data - array(
+              select k from jsonb_object_keys(old.data) k where not (new.data ? k));
+      v_context_erasure := coalesce(v_context_erasure, false);
+      select p.data into v_patient_data
+        from public.patient p where p.id = new.patient_id for share;
+      v_historical_eval := public.occurrence_evaluation_data(v_historical_version, v_patient_data, new.data);
+      v_active_eval := public.occurrence_evaluation_data(v_active_version, v_patient_data, new.data);
+      if tg_op = 'UPDATE' then
+        v_old_eval := public.occurrence_evaluation_data(v_active_version, v_patient_data, old.data);
+      end if;
+    end if;
+  end if;
+
+  if tg_op = 'INSERT' then
+    -- Les controles historiques restent inchanges pour une nouvelle fiche et
+    -- gardent les codes d'erreur attendus par les clients actuels.
+    perform public.assert_block_hidden_values(v_historical_version, v_scope, v_historical_eval);
+    perform public.assert_contains_any_hidden_values(v_historical_version, v_scope, v_historical_eval);
+  else
+    -- Une valeur historique masquee peut rester en place tant qu'elle n'est pas
+    -- reecrite par le chemin de complement E3.
+    perform public.form_record_assert_no_changed_hidden_values(
+      v_active_version, v_scope, v_old_eval, v_active_eval
+    );
+  end if;
+
+  perform public.form_record_assert_known_data(
+    v_historical_version, v_active_version, v_scope, new.data
+  );
+
+  -- Les validations de valeur restent liees au statut clinique final. Les
+  -- RPC de complement ont deja valide le patch et ne revalident pas une valeur
+  -- historique absente de la definition active comme si elle etait nouvelle.
+  if new.validation_status = 'curated' then
+    perform public.assert_data_valid(v_historical_version, v_scope, new.data);
+    if v_active_version is distinct from v_historical_version then
+      perform public.assert_data_valid(v_active_version, v_scope, new.data);
+    end if;
+  end if;
+
+  -- Les obligations de la fiche restent celles de sa revision historique.
+  -- Les nouveaux requis sont exposes dans le contexte comme obligations
+  -- courantes, sans transformer retrospectivement complete/curated en erreur.
+  -- L74b : un effacement déclaré ne rejoue pas les obligations de la version
+  -- historique. Une occurrence née dans une version qui exigeait la variable, sans
+  -- règle de contexte, ne peut sinon jamais perdre une valeur que la version active
+  -- masque ; validée, elle ne peut pas non plus repasser en brouillon : la fiche
+  -- patient resterait impossible à corriger. Tous les autres contrôles restent.
+  if new.validation_status <> 'draft' and not v_context_erasure then
+    if v_scope = 'patient' then
+      perform public.assert_required_complete(v_historical_version, 'patient', new.data);
+    else
+      perform public.assert_required_complete(
+        v_historical_version, 'encounter', v_historical_eval, new.encounter_type, new.group_section_key
+      );
+    end if;
+  end if;
+
+  if new.validation_status = 'curated' then
+    perform public.assert_validation_rules(
+      v_historical_version, new.data,
+      public.visibility_hidden_fields(v_historical_version, v_historical_eval)
+    );
+    -- Pour une fiche nee dans la definition active, le filet historique reste
+    -- strict. Pour une fiche ancienne, une valeur masquee preexistante ne doit
+    -- pas etre effacee pour rendre la nouvelle definition lisible.
+    if v_active_version is not distinct from v_historical_version then
+      perform public.assert_no_hidden_values(v_historical_version, v_scope, v_historical_eval);
+    end if;
+  end if;
+  return new;
+end
+$$;
+revoke all on function public.assert_curated_complete() from public, anon, authenticated;
 
 notify pgrst, 'reload schema';
 commit;
