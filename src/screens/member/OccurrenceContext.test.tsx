@@ -153,9 +153,10 @@ describe('L74c — contexte patient des occurrences', () => {
     expect(getPatient).toHaveBeenCalledTimes(1);
 
     // Le serveur lit la fiche ENREGISTREE (L74a) : tant que « Trauma » n'est pas enregistre,
-    // l'occurrence ne part pas, et la saisie reste dans le formulaire.
-    await user.click(screen.getByRole('button', { name: 'Enregistrer l’occurrence' }));
-    expect(screen.getByText(/Enregistrez d’abord la fiche/)).toBeInTheDocument();
+    // rien ne part seul. L'action propose d'enregistrer la fiche puis l'occurrence (L74f,
+    // `ChainedRecordSave.test.tsx`).
+    expect(screen.queryByRole('button', { name: 'Enregistrer l’occurrence' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer la fiche puis l’occurrence' })).toBeInTheDocument();
     expect(createEncounter).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/Gradation AO/)).toHaveValue('B');
   });

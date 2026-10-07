@@ -108,13 +108,18 @@ export function useUnsavedChanges(dirty: boolean) {
   };
 }
 
-export function useDirtyForm(value: unknown, ready: boolean, contextKey: string) {
+/**
+ * `alsoDirty` : saisie en cours tenue hors de `value` (une occurrence ouverte, par exemple). Elle
+ * compte comme une modification sans entrer dans la référence : réaligner la référence après un
+ * enregistrement partiel ne la fait donc jamais oublier.
+ */
+export function useDirtyForm(value: unknown, ready: boolean, contextKey: string, alsoDirty = false) {
   const fingerprint = JSON.stringify(value);
   const [baseline, setBaseline] = useState<{ key: string; fingerprint: string } | null>(null);
   useEffect(() => {
     if (ready && baseline?.key !== contextKey) setBaseline({ key: contextKey, fingerprint });
   }, [ready, contextKey, fingerprint, baseline?.key]);
-  const dirty = ready && baseline?.key === contextKey && baseline.fingerprint !== fingerprint;
+  const dirty = ready && ((baseline?.key === contextKey && baseline.fingerprint !== fingerprint) || alsoDirty);
   const navigation = useUnsavedChanges(dirty);
   return { ...navigation, dirty, resetBaseline: () => setBaseline(null),
     markClean: () => { setBaseline({ key: contextKey, fingerprint }); navigation.allowLeave(); } };
