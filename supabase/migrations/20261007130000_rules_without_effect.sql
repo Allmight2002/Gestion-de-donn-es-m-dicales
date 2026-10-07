@@ -23,7 +23,8 @@
 --     la rejoue sur toutes les règles d'une version à chaque modification de structure. Une
 --     version qui porte déjà une règle sans effet reste donc entièrement modifiable.
 --   * Le refus vit dans la garde de LIGNE `guard_validation_rule_structure`, à l'insertion
---     ou à la modification du CONTENU d'une règle (`rule` ou version), écrite directement.
+--     ou à la modification du CONTENU d'une règle (`rule` ou version), par une personne
+--     authentifiée.
 --   * Une règle reprise à l'identique d'une autre version (duplication, version suivante,
 --     promotion, base depuis un modèle, import de bloc ou de définition, préparation de
 --     formulaire) n'est pas une écriture nouvelle : elle est acceptée telle quelle.

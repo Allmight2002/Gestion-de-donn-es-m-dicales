@@ -121,7 +121,7 @@ const show = (driver: string, target: string): Rule => ({
   if: { field: driver, operator: 'equals', value: 'oui' },
   then: { field: target, operator: 'visible' },
 });
-const require = (driver: string, target: string): Rule => ({
+const requireRule = (driver: string, target: string): Rule => ({
   if: { field: driver, operator: 'equals', value: 'oui' },
   then: { field: target, operator: 'required' },
 });
@@ -178,15 +178,15 @@ describe('test 11 (D5) : refus à l\'écriture', () => {
   });
 
   test('required : pilote et cible dans le même espace', async () => {
-    await authorRule(v, require('enc_a', 'enc_b'));
-    await authorRule(v, require('perm', 'perm2'));
-    await authorRule(v, require('g1', 'g2'));
+    await authorRule(v, requireRule('enc_a', 'enc_b'));
+    await authorRule(v, requireRule('perm', 'perm2'));
+    await authorRule(v, requireRule('g1', 'g2'));
     // P3.
-    await expectWithoutEffect(authorRule(v, require('perm', 'g1')), 'required_cross_space');
-    await expectWithoutEffect(authorRule(v, require('enc_a', 'g1')), 'required_cross_space');
-    await expectWithoutEffect(authorRule(v, require('g1', 'enc_a')), 'required_cross_space');
-    await expectWithoutEffect(authorRule(v, require('i1', 'g1')), 'required_cross_space');
-    await expectWithoutEffect(authorRule(v, require('perm', 'enc_a')), 'required_cross_space');
+    await expectWithoutEffect(authorRule(v, requireRule('perm', 'g1')), 'required_cross_space');
+    await expectWithoutEffect(authorRule(v, requireRule('enc_a', 'g1')), 'required_cross_space');
+    await expectWithoutEffect(authorRule(v, requireRule('g1', 'enc_a')), 'required_cross_space');
+    await expectWithoutEffect(authorRule(v, requireRule('i1', 'g1')), 'required_cross_space');
+    await expectWithoutEffect(authorRule(v, requireRule('perm', 'enc_a')), 'required_cross_space');
   });
 
   test('comparaison : les deux opérandes dans le même espace', async () => {
@@ -287,7 +287,7 @@ describe('test 11 (D5) : une version qui porte déjà des règles sans effet res
   beforeAll(async () => {
     v = await fixture();
     p1 = await legacyRule(v, show('enc_a', 'g1')); // P1
-    await legacyRule(v, require('perm', 'g2')); // P3
+    await legacyRule(v, requireRule('perm', 'g2')); // P3
     await legacyRule(v, compare('perm', 'i1')); // P4
     await legacyRule(v, showBlock('enc_a', 'bloc_e')); // P5
     await legacyRule(v, showBlock('g1', 'plain')); // pilote dans un groupe
@@ -353,6 +353,6 @@ describe('test 11 (D5) : une version qui porte déjà des règles sans effet res
       (await client.query('select (public.duplicate_template_version($1)).id as id', [v])).rows as Row[]);
     expect(await ruleCount(copy.id as string)).toBe(await ruleCount(v));
     // La copie n'est pas une porte : une règle sans effet NOUVELLE y reste refusée.
-    await expectWithoutEffect(authorRule(next.id as string, require('enc_b', 'g2')), 'required_cross_space');
+    await expectWithoutEffect(authorRule(next.id as string, requireRule('enc_b', 'g2')), 'required_cross_space');
   });
 });
