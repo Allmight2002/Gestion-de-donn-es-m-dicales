@@ -1,6 +1,6 @@
 # L74 — Variables permanentes comme contexte d'affichage des occurrences de groupe répétable
 
-- Statut : 📋 **cadré le 6 octobre 2026, arbitré le 6 octobre 2026, non implémenté**
+- Statut : 📋 **cadré le 6 octobre 2026, arbitré le 6 octobre 2026** ; L74a (socle serveur) implémenté, en revue (§13)
 - Prérequis : L66 à L72 fusionnés (groupes répétables, groupe en sous-section, retrait de bloc)
 - Surface serveur visée : `assert_rule_structure`, `assert_curated_complete` (branche rencontre),
   `guard_group_occurrence_block_visible`, fonctions de complétude (`missing_required_fields` et
@@ -447,3 +447,78 @@ En plus du test 10 du §9 :
 - journal : une ligne `field_change_log` par variable effacée, source `visibility_withdrawal`,
   aucun motif ne contient de valeur clinique ;
 - brouillon de curation et brouillon de travail après effacement : comportement retenu au §12.3.
+
+## 13. État de L74a — socle serveur (7 octobre 2026)
+
+Statut : **implémenté, en revue** (PR brouillon vers `develop`). Migration additive unique
+`20261006120000_occurrence_patient_context.sql` ; aucune migration existante modifiée ;
+rien n'est appliqué à distance.
+
+### 13.1 Ce qui est livré
+
+- `occurrence_evaluation_data(version, patient.data, occurrence)` : l'occurrence complétée par
+  les clés de portée `patient` **dans la version évaluée** (§3). Invoker, exécutable par
+  `authenticated` (les requêtes de complétude sont invoker).
+- Séparation §3.1 : nouvelle surcharge `assert_validation_rules(version, data, hidden)`. Les
+  règles bloquantes lisent l'occurrence **seule** ; l'ensemble masqué vient des données
+  fusionnées. La signature historique `assert_validation_rules(version, data)` est inchangée.
+- `assert_rule_structure` accepte `visible` d'une variable permanente vers une variable d'un
+  groupe répétable (racine ou sous-section). Les autres combinaisons inter-fiches gardent le
+  même refus et le même message ; aucun durcissement D5 (L74e).
+
+### 13.2 Sites branchés (§5.1)
+
+| Site | Branchement |
+|---|---|
+| `assert_curated_complete`, branche occurrence | Fiche lue `for share`. Insertion : `assert_block_hidden_values` et `assert_contains_any_hidden_values` sur les données fusionnées (version historique). Mise à jour : `form_record_assert_no_changed_hidden_values` sur ancienne **et** nouvelle valeur fusionnées avec la même fiche (version active). Complétude et `assert_no_hidden_values` fusionnées (version historique). Règles bloquantes : variante §3.1. Valeurs connues et `assert_data_valid` : occurrence seule |
+| `form_record_assert_no_changed_hidden_values` | Reçoit les données fusionnées de ses deux appelants (déclencheur, `update_encounter_compatible`) ; fonction elle-même inchangée |
+| `create_encounter` (corps de mission 20261001150000) | Complétude anticipée fusionnée ; la fiche est déjà verrouillée `for update` |
+| `update_encounter` (idem) | Fiche `for share` **avant** la ligne ; contrôles anticipés de bloc, de `contains_any` et de complétude fusionnés ; codes d'erreur inchangés |
+| `update_encounter_compatible` (idem) | Fiche `for share` entre la base et la ligne ; complétude et contrôle E3 fusionnés |
+| `commit_work_draft` (correction d'occurrence) | La projection serveur retirait les réponses masquées calculées **sans** contexte : une variable révélée par la fiche aurait été retirée en silence. Masquage calculé sur `contexte ⊕ brouillon` ; fiche `for share` avant `assert_work_draft_context`, qui verrouille la ligne |
+| `form_record_context_json` (contexte E3) | Contexte fusionné avec les clés permanentes des versions historique et active ; les `values` et `fields` rendus restent ceux des variables de rencontre |
+| `export_incomplete_records` | `missing_required_fields` reçoit les données fusionnées avec la fiche **courante** |
+| `base_completion_queue_page`, `my_todo_counts` | `record_completion_summary_in_context` reçoit les données fusionnées |
+| `guard_group_occurrence_block_visible` | Fiche lue `for share` (§5.1, concurrence) |
+
+Les rencontres ordinaires (`group_section_key` nul) et la fiche patient passent exactement
+les mêmes données qu'avant (D1). `create_encounter_idempotent`, `replay_encounter_create`
+et `replay_encounter_update` délèguent aux RPC ci-dessus : couverts sans redéfinition.
+
+### 13.3 Constats faits en route (hors inventaire initial)
+
+1. **`commit_work_draft`** n'est pas un simple contrôle anticipé : c'est une projection qui
+   **retire** des valeurs (voir 13.2). Sans branchement, perte silencieuse de saisie.
+2. **Suppression douce d'une occurrence.** `assert_curated_complete` rejoue tous ses contrôles
+   sur une suppression. Avec le contexte, un changement de fiche (pilote décoché ou coché)
+   pouvait rendre une occurrence **impossible à supprimer**, y compris par le retrait L72e.
+   Une suppression douce pure (données et statut inchangés) d'une occurrence ne rejoue donc
+   plus ces contrôles. Rencontres ordinaires inchangées.
+3. **Ordre des verrous.** Les écritures interactives d'occurrence prennent la fiche avant la
+   ligne, comme `patient_group_withdrawal_prepare` (L72e) : pas d'interblocage. Les
+   réécritures en masse d'administration (`delete_template_field`, renommage de clés) mettent
+   à jour des occurrences sans verrouiller la fiche d'abord : un interblocage avec un retrait
+   concurrent reste possible, détecté par PostgreSQL (une transaction annulée, rien d'écrit
+   à moitié). Rare ; non traité ici.
+4. **`base_completeness_stats`** n'évalue pas la visibilité (comptes de valeurs par variable) :
+   rien à brancher. **`record_completion_summary`** n'a aucun appelant en base ni côté web ;
+   la file et les compteurs appellent `record_completion_summary_in_context`, branché.
+5. **`finalize_curation_task`** et **`import_records_legacy`** ne créent que des rencontres
+   ordinaires : hors D1.
+6. **Empreinte de contexte E3.** `form_record_context_fingerprint` ne porte pas la fiche
+   patient : après un changement de contexte, un client garde une empreinte valide. Le serveur
+   rejuge sous verrou avec la fiche engagée ; l'écriture est alors refusée
+   (`block_hidden_value` ou `contains_any_hidden_value`, action `refresh_required`). À
+   connaître pour L74c (classement en conflit, entrées locales préservées).
+7. **Avant L74b**, décocher un pilote laisse des valeurs masquées dans les occurrences ; une
+   occurrence finalisée concernée ne peut plus être réenregistrée tant qu'elle les porte
+   (refus `Variable masquee`). Comportement attendu, levé par L74b.
+
+### 13.4 Tests (`test/occurrence-patient-context.test.ts`)
+
+Tests §9.1 couverts : 1 (deux bases, avant et après la migration, mêmes identifiants :
+`export_incomplete_records`, file, compteurs, `missing_required_fields`,
+`record_completion_summary` et contexte E3 identiques), 2, 3, 4, 5, 6, 7 (création,
+`update_encounter`, `update_encounter_compatible`, brouillon de travail ; le rejeu hors ligne
+délègue à `update_encounter`), 8, 9 (verrou observé dans `pg_stat_activity`, puis refus sur
+le contexte engagé), 11 partie D2, 12. Hors L74a : 10 (L74b), 11 partie D5 (L74e).
