@@ -1631,6 +1631,15 @@ export const messages = {
     'rule.terminology_release': 'Publication du référentiel liée à cette règle',
     'rule.terminology_release_hint': 'Identifiant de la publication (UUID)',
     'rule.operator.in': 'fait partie de',
+    // --- L74d : espaces d'evaluation des regles (contexte patient des groupes) ----
+    'rule.context_patient_driver': 'Condition lue sur la fiche patient',
+    'rule.context_patient_driver_details': 'Cette variable permanente commande l’affichage dans chaque occurrence du groupe. Elle ne peut ni rendre une variable obligatoire, ni être comparée.',
+    'rule.context_sentence': '(condition lue sur la fiche patient)',
+    'rule.space_visible_cross_space': 'Affichage sans effet : la condition et la variable sont lues sur deux fiches différentes.',
+    'rule.space_required_cross_space': 'Obligation sans effet : la condition et la variable sont lues sur deux fiches différentes.',
+    'rule.space_comparison_cross_space': 'Comparaison sans effet : les deux variables sont lues sur deux fiches différentes.',
+    'rule.space_block_group_driver': 'Ce bloc porte un groupe répétable : seule une variable permanente peut commander son affichage.',
+    'rule.space_details': 'Une règle s’évalue sur une seule fiche : patient, visite ou occurrence d’un groupe. Exception : une variable permanente peut commander l’affichage d’une variable de groupe. Une règle existante reste enregistrée, mais ne se déclenche pas.',
     // --- Comptes de mission (L10) -------------------------------------------------
     'mission.title': 'Comptes de mission',
     'mission.subtitle': 'Créez des accès temporaires pour la saisie terrain.',
