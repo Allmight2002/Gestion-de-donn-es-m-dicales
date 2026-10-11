@@ -19,6 +19,7 @@ import {
   type PreparationEditorLoaded,
 } from '../src/domain/formPreparationEditor.js';
 import { templateFieldToNewField } from '../src/domain/templateFields.js';
+import { fieldOptions } from '../src/domain/fieldOptions.js';
 import type { FormDefinition } from '../src/data/formPreparations.js';
 
 let db: TestDb;
@@ -58,7 +59,7 @@ async function rpc<T>(sql: string, params: unknown[]): Promise<T> {
   });
 }
 
-async function createFixture(): Promise<Fixture> {
+async function createFixture(opts: { legacyFieldKey?: boolean } = {}): Promise<Fixture> {
   const templateId = randomUUID();
   const versionId = randomUUID();
   const rootSectionId = randomUUID();
@@ -114,6 +115,15 @@ async function createFixture(): Promise<Fixture> {
          array['consultation','suivi']::text[],null)`,
       [versionId, rootSectionId, groupId, childSectionId],
     );
+    if (opts.legacyFieldKey) {
+      // Cle saisie librement dans l'editeur : ni la table ni les RPC de variable n'imposent
+      // le format strict de l'import, une telle cle existe donc dans des formulaires reels.
+      await db.admin.query(
+        `insert into public.template_field(template_version_id,field_key,label,scope,section,section_id,type,display_order)
+         values($1,'IMC','IMC','patient','clinique',$2,'number',4)`,
+        [versionId, rootSectionId],
+      );
+    }
     await db.admin.query(
       `insert into public.validation_rule(template_version_id,rule,message,severity) values($1,$2::jsonb,$3,'block')`,
       [
@@ -438,5 +448,65 @@ describe('E4 — payload de l’éditeur de préparation', () => {
     )).rows[0] as { data: Record<string, unknown>; template_version_id: string };
     expect(patient.data).toEqual({ lateralite: 'gauche', grade: 'II' });
     expect(patient.template_version_id).toBe(fixture.versionId);
+  }, 120_000);
+  test('ajouter une option malgré une variable existante à clé hors format strict', async () => {
+    const fixture = await createFixture({ legacyFieldKey: true });
+    const context = await readContext(fixture);
+    const adapter = createPreparationTemplateRepository(editorSource(fixture), context.definition);
+
+    const loaded = await adapter.getVersion(fixture.versionId);
+    const lateralite = loaded.fields.find((field) => field.fieldKey === 'lateralite')!;
+    const options = [
+      ...fieldOptions(lateralite),
+      { valueKey: 'bilaterale', label: 'Bilatérale', isActive: true },
+    ];
+    await adapter.updateField(lateralite.id, templateFieldToNewField(lateralite, {
+      allowedOptions: options,
+      allowedValues: options.map((option) => option.valueKey),
+    }));
+
+    const session: Session = {
+      preparationId: randomUUID(),
+      sourceRevision: context.sourceRevision,
+      sourceFingerprint: context.sourceFingerprint,
+      revision: 0,
+    };
+    const { preview } = await saveAndPreview(session, fixture, adapter.getPreparationPayload());
+    // Avant 20261011120000 : FORM_CHANGE_UNSUPPORTED (field_shape) à cause de `IMC`.
+    expect(preview.error).toBeUndefined();
+    expect(preview.preparation.classification).toBe('additive');
+
+    const applied = await rpc<Receipt>(
+      'select public.apply_form_preparation($1,$2,$3,$4,$5) as result',
+      [session.preparationId, session.revision, session.sourceRevision,
+        session.sourceFingerprint, randomUUID()],
+    );
+    expect(applied.error).toBeUndefined();
+    const targetVersionId = applied.application!.targetTemplateVersionId;
+    const fields = (await db.admin.query(
+      'select field_key, allowed_values from public.template_field where template_version_id=$1',
+      [targetVersionId],
+    )).rows as Array<{ field_key: string; allowed_values: unknown }>;
+    expect(fields.map((row) => row.field_key)).toContain('IMC');
+    expect(fields.find((row) => row.field_key === 'lateralite')!.allowed_values)
+      .toEqual(['gauche', 'droite', 'bilaterale']);
+  }, 120_000);
+
+  test('une nouvelle variable garde le format strict de clé', async () => {
+    const fixture = await createFixture();
+    const context = await readContext(fixture);
+    const adapter = createPreparationTemplateRepository(editorSource(fixture), context.definition);
+    await adapter.addField(fixture.versionId, {
+      fieldKey: 'Taille', label: 'Taille', scope: 'patient', section: 'clinique', type: 'number', required: false,
+    });
+
+    const session: Session = {
+      preparationId: randomUUID(),
+      sourceRevision: context.sourceRevision,
+      sourceFingerprint: context.sourceFingerprint,
+      revision: 0,
+    };
+    await expect(saveAndPreview(session, fixture, adapter.getPreparationPayload()))
+      .rejects.toThrow('FORM_CHANGE_UNSUPPORTED');
   }, 120_000);
 });
