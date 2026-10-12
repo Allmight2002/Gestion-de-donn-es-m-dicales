@@ -207,6 +207,11 @@ export function errorMessage(e: unknown, fallback: string): string {
     return 'Ce nom interne est déjà porté par une autre valeur dans au moins un dossier : '
       + "choisissez-en un autre. Rien n'a été enregistré.";
   }
+  if (code === 'FIELD_KEY_INVALID') {
+    return 'La clé technique doit commencer par une lettre minuscule et ne contenir que des '
+      + "lettres minuscules sans accent, des chiffres et « _ » (63 caractères au plus). "
+      + "Rechargez l'application puis réessayez. Rien n'a été enregistré.";
+  }
   if (code === 'OPTION_REPLACEMENT_REQUIRED') {
     return 'Une option retirée est encore choisie dans des dossiers : choisissez une option de '
       + "remplacement ou videz ces valeurs. Rien n'a été enregistré.";

@@ -4,8 +4,8 @@
 > migrations (forward-only) sans avoir à les rejouer de tête. À régénérer après chaque
 > nouvelle migration — `npm run manifest` signale s'il est en retard.
 
-- Dernière migration incluse : `20261011120000_form_preparation_existing_field_keys.sql`
-- Tables : 61 · Policies RLS : 76 · Triggers : 153 · Fonctions : 455
+- Dernière migration incluse : `20261012090000_record_widened_option_lists.sql`
+- Tables : 61 · Policies RLS : 76 · Triggers : 154 · Fonctions : 457
 
 ## Tables (colonnes, RLS, policies, triggers)
 
@@ -1138,6 +1138,7 @@ Triggers :
 - `trg_template_field_formula` — BEFORE INSERT/UPDATE → `enforce_template_field_formula()`
 - `trg_template_field_formula_operand` — BEFORE UPDATE/DELETE → `enforce_template_field_formula_operand()`
 - `trg_template_field_formula_rules` — BEFORE INSERT/UPDATE → `enforce_template_field_formula_rules()`
+- `trg_template_field_key_format` — BEFORE INSERT/UPDATE → `enforce_template_field_key_format()`
 - `trg_template_field_key_rename_follows` — AFTER UPDATE → `follow_template_field_key_rename()`
 - `trg_template_field_key_rename_values` — AFTER UPDATE → `follow_template_field_key_rename_values()`
 - `trg_template_field_missing_reasons` — BEFORE INSERT/UPDATE → `enforce_template_field_missing_reasons()`
@@ -1493,6 +1494,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | enforce_template_field_formula | — | INVOKER | plpgsql |
 | enforce_template_field_formula_operand | — | INVOKER | plpgsql |
 | enforce_template_field_formula_rules | — | INVOKER | plpgsql |
+| enforce_template_field_key_format | — | INVOKER | plpgsql |
 | enforce_template_field_missing_reasons | — | DEFINER | plpgsql |
 | ensure_curation_draft | p_task_id uuid, p_base_id uuid | INVOKER | plpgsql |
 | expire_form_preparations | — | DEFINER | plpgsql |
@@ -1548,6 +1550,7 @@ Policies : *(aucune — table fermée aux clients, écrite par RPC/serveur seule
 | form_record_error | p_code text, p_reason text | DEFINER | plpgsql |
 | form_record_field_compatible | p_historical template_field, p_active template_field | DEFINER | sql |
 | form_record_field_group_applicable | p_version_id uuid, p_field_key text, p_group_section_key text | INVOKER | sql |
+| form_record_historical_data | p_historical_version uuid, p_active_version uuid, p_scope text, p_data jsonb | DEFINER | sql |
 | form_record_merge_legacy_payload | p_historical_version uuid, p_active_version uuid, p_scope text, p_existing jsonb, p_payload jsonb | DEFINER | plpgsql |
 | form_record_value_fingerprint | p_value jsonb | DEFINER | sql |
 | formula_with_renamed_field | formula text, p_old text, p_new text | INVOKER | sql |

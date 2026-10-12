@@ -121,6 +121,21 @@ export function displayOptionValue(field: OptionCarrier | null | undefined, valu
 const ACCENTS = 'àáâãäåçèéêëìíîïñòóôõöùúûüýÿœæ';
 const PLAIN = 'aaaaaaceeeeiiiinooooouuuuyyoa';
 
+/** Minuscules sans accent, apostrophes retirees, tout autre caractere ramene a `_`. */
+export function asciiSlug(text: string): string {
+  return text
+    .toLocaleLowerCase()
+    .replace(/[’']/g, '')
+    .split('')
+    .map((c) => {
+      const i = ACCENTS.indexOf(c);
+      return i >= 0 ? PLAIN[i] : c;
+    })
+    .join('')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 /**
  * Code propose pour une option NOUVELLE, derive de son libelle.
  *
@@ -131,18 +146,7 @@ const PLAIN = 'aaaaaaceeeeiiiinooooouuuuyyoa';
  * Une fois cree, un code ne bouge plus : renommer le libelle ne le recalcule pas.
  */
 export function makeValueKey(label: string, taken: readonly string[]): string {
-  const base = label
-    .toLocaleLowerCase()
-    .replace(/[’']/g, '')
-    .split('')
-    .map((c) => {
-      const i = ACCENTS.indexOf(c);
-      return i >= 0 ? PLAIN[i] : c;
-    })
-    .join('')
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 60);
+  const base = asciiSlug(label).slice(0, 60);
   // Un libelle entierement non latin (arabe, cyrillique...) ne laisse rien : on retombe
   // sur un code neutre plutot que sur une chaine vide, qui serait refusee par la base.
   const seed = base || 'option';
