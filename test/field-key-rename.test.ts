@@ -65,31 +65,31 @@ describe('renommer une variable met a jour les regles qui la citent', () => {
   test('les quatre emplacements suivent le nouveau code ; le reste de la regle est intact', async () => {
     const before = await rules(version);
 
-    await rename(alice, version, 'sexe', 'Sexe_patient');
-    await rename(alice, version, 'poids', 'Poids-kg');
+    await rename(alice, version, 'sexe', 'sexe_patient');
+    await rename(alice, version, 'poids', 'poids_kg');
     await rename(alice, version, 'grossesse', 'grossesse_en_cours');
 
     const after = await rules(version);
     expect(after.map(({ id, message, severity }) => ({ id, message, severity })))
       .toEqual(before.map(({ id, message, severity }) => ({ id, message, severity })));
     expect(after.map((r) => r.rule)).toEqual([
-      { operator: 'greater_or_equal', left_field: 'Poids-kg', right_field: 'age' },
-      { if: { field: 'Sexe_patient', operator: 'equals', value: 'f' }, then: { field: 'grossesse_en_cours', operator: 'visible' } },
-      { if: { field: 'Sexe_patient', operator: 'equals', value: 'm' }, then: { field: 'Poids-kg', operator: 'required' } },
+      { operator: 'greater_or_equal', left_field: 'poids_kg', right_field: 'age' },
+      { if: { field: 'sexe_patient', operator: 'equals', value: 'f' }, then: { field: 'grossesse_en_cours', operator: 'visible' } },
+      { if: { field: 'sexe_patient', operator: 'equals', value: 'm' }, then: { field: 'poids_kg', operator: 'required' } },
     ]);
 
     await rename(alice, version, 'age', 'age_ans');
-    expect((await rules(version))[0].rule).toMatchObject({ left_field: 'Poids-kg', right_field: 'age_ans' });
+    expect((await rules(version))[0].rule).toMatchObject({ left_field: 'poids_kg', right_field: 'age_ans' });
   });
 
   test('un renommage refuse ne reecrit aucune regle', async () => {
     const before = await rules(version);
     // Code deja pris dans la version : la contrainte d'unicite refuse le renommage.
-    await expect(rename(alice, version, 'Sexe_patient', 'age_ans')).rejects.toThrow();
+    await expect(rename(alice, version, 'sexe_patient', 'age_ans')).rejects.toThrow();
     expect(await rules(version)).toEqual(before);
   });
 
-  test('les formules suivent le renommage d un operande ; un code hors format de formule est refuse explicitement', async () => {
+  test('les formules suivent le renommage d un operande ; un code hors format est refuse explicitement', async () => {
     const v = await draft('Formule (fictif)');
     await db.admin.query(`insert into template_field
         (template_version_id,field_key,label,scope,type,display_order)
@@ -102,17 +102,19 @@ describe('renommer une variable met a jour les regles qui la citent', () => {
 
     await rename(alice, v, 'debut', 'heure_debut');
     expect(await formula()).toBe('fin - heure_debut');
-    await rename(alice, v, 'fin', 'Fin_op');
-    expect(await formula()).toBe('Fin_op - heure_debut');
+    await rename(alice, v, 'fin', 'fin_op');
+    expect(await formula()).toBe('fin_op - heure_debut');
 
-    // Une formule n'admet ni accent ni tiret : refus nomme, rien n'est ecrit.
+    // Une cle renommee hors format est refusee avant toute reecriture (20261011150000) : le
+    // refus FIELD_KEY_FORMULA_INCOMPATIBLE n'est donc plus atteint par un renommage, toute cle
+    // conforme etant admise dans une formule. Rien n'est ecrit.
     let detail: unknown;
-    try { await rename(alice, v, 'Fin_op', 'fin-op'); } catch (e) { detail = JSON.parse((e as { detail: string }).detail); }
-    expect(detail).toEqual({ code: 'FIELD_KEY_FORMULA_INCOMPATIBLE', formulaField: 'Durée' });
-    expect(await formula()).toBe('Fin_op - heure_debut');
+    try { await rename(alice, v, 'fin_op', 'fin-op'); } catch (e) { detail = JSON.parse((e as { detail: string }).detail); }
+    expect(detail).toEqual({ code: 'FIELD_KEY_INVALID' });
+    expect(await formula()).toBe('fin_op - heure_debut');
 
     // Seul le renommage est suivi : le changement de type d'un operande reste refuse.
-    await expect(db.admin.query("update template_field set type='text' where template_version_id=$1 and field_key='Fin_op'", [v]))
+    await expect(db.admin.query("update template_field set type='text' where template_version_id=$1 and field_key='fin_op'", [v]))
       .rejects.toThrow(/utilisee par la formule/);
   });
 

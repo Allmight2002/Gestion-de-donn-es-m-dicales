@@ -4,6 +4,7 @@ import type { MessageKey } from '../../i18n/messages';
 import { VALUE_SET_LIBRARY } from '../../domain/valueSetLibrary';
 import { fieldOptions, makeValueKey, optionKeys, type FieldOption } from '../../domain/fieldOptions';
 import { OptionsEditor } from './OptionsEditor';
+import { normalizeFieldKey } from '../../domain/fieldKey';
 import { makeProposalField } from '../../domain/proposalField';
 import { NOW_TOKEN, TODAY_TOKEN, defaultValueRisk, supportsDefaultValue } from '../../domain/fieldDefaults';
 import { HISTORIC_MISSING_CODES, MISSING_CODES, allowedMissingReasons, type MissingCode } from '../../domain/validation';
@@ -308,6 +309,10 @@ export function FieldForm({
     }
     // Une formule incomplete ou refusee n'est jamais envoyee : le motif est deja affiche.
     if (calculated && !formulaCheck.ok) return;
+    // Une cle nouvelle ou renommee est ramenee au format attendu par la base ; une cle
+    // existante laissee telle quelle n'est jamais reecrite, meme hors format (`IMC`).
+    const keptKey = editing && fieldKey.trim() === initial?.fieldKey;
+    const savedKey = keptKey ? initial.fieldKey : normalizeFieldKey(fieldKey) || normalizeFieldKey(label) || 'variable';
     const listed = isChoice && options.length > 0 ? options : null;
     if (formulaReady) {
       // Tout ce qui n'a pas de sens sur une variable calculee part explicitement a vide, au
@@ -315,7 +320,7 @@ export function FieldForm({
       // variable, donc ni obligation, ni valeur proposee, ni raison de valeur manquante.
       const save = advance ? (onSubmitAndNext ?? onSubmit) : onSubmit;
       const accepted = await save({
-        fieldKey: fieldKey.trim(), label: label.trim(), description: description.trim() || null,
+        fieldKey: savedKey, label: label.trim(), description: description.trim() || null,
         scope: effectiveScope, section,
         type: (outputType ?? 'number') as FieldType,
         required: false,
@@ -336,7 +341,7 @@ export function FieldForm({
       return;
     }
     const built: NewField = {
-      fieldKey: fieldKey.trim(), label: label.trim(), description: description.trim() || null, scope: effectiveScope, section, type, required,
+      fieldKey: savedKey, label: label.trim(), description: description.trim() || null, scope: effectiveScope, section, type, required,
       // Un retour vers un autre type n'emporte JAMAIS la cardinalite : la base refuse
       // `is_multiple` hors terminologie, et l'ecran ne doit pas provoquer ce refus.
       isMultiple: type === 'terminology' && isMultiple,

@@ -751,3 +751,49 @@ describe('FieldForm — variable d un bloc repetable (L67)', () => {
     expect(scope).toBeDisabled();
   });
 });
+
+// La cle technique saisie librement est ramenee au format attendu par la base ; une cle
+// existante hors format, laissee telle quelle, n'est jamais reecrite.
+describe('FieldForm — normalisation de la clé technique', () => {
+  test('une nouvelle clé est normalisée à l’enregistrement', async () => {
+    const onSubmit = renderForm();
+    await userEvent.type(screen.getByLabelText('Clé technique'), 'Date d’entrée IRM');
+    await userEvent.type(screen.getByLabelText('Libellé'), 'Date d’entrée IRM');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter la variable' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ fieldKey: 'date_dentree_irm' }), undefined);
+  });
+
+  const existante = {
+    fieldKey: 'IMC', label: 'IMC', scope: 'patient' as const, section: 'clinique' as const,
+    type: 'number' as const, required: false,
+  };
+
+  test('une clé existante hors format, non modifiée, reste telle quelle', async () => {
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <FieldForm onSubmit={onSubmit} initial={existante} submitLabel="Enregistrer" />
+      </I18nProvider>,
+    );
+    await userEvent.type(screen.getByLabelText('Libellé'), ' (kg/m²)');
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ fieldKey: 'IMC', label: 'IMC (kg/m²)' }), undefined);
+  });
+
+  test('une clé existante renommée est normalisée', async () => {
+    const onSubmit = vi.fn();
+    render(
+      <I18nProvider>
+        <FieldForm onSubmit={onSubmit} initial={existante} submitLabel="Enregistrer" />
+      </I18nProvider>,
+    );
+    const key = screen.getByLabelText('Clé technique');
+    await userEvent.clear(key);
+    await userEvent.type(key, 'IMC initial');
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ fieldKey: 'imc_initial' }), undefined);
+  });
+});
