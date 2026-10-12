@@ -509,4 +509,58 @@ describe('E4 — payload de l’éditeur de préparation', () => {
     await expect(saveAndPreview(session, fixture, adapter.getPreparationPayload()))
       .rejects.toThrow('FORM_CHANGE_UNSUPPORTED');
   }, 120_000);
+  test('un dossier antérieur à l’évolution reçoit une option ajoutée, sans conversion', async () => {
+    const fixture = await createFixture();
+    const context = await readContext(fixture);
+    const adapter = createPreparationTemplateRepository(editorSource(fixture), context.definition);
+    const loaded = await adapter.getVersion(fixture.versionId);
+    const lateralite = loaded.fields.find((field) => field.fieldKey === 'lateralite')!;
+    const options = [...fieldOptions(lateralite), { valueKey: 'bilaterale', label: 'Bilatérale', isActive: true }];
+    await adapter.updateField(lateralite.id, templateFieldToNewField(lateralite, {
+      allowedOptions: options,
+      allowedValues: options.map((option) => option.valueKey),
+    }));
+    const session: Session = {
+      preparationId: randomUUID(),
+      sourceRevision: context.sourceRevision,
+      sourceFingerprint: context.sourceFingerprint,
+      revision: 0,
+    };
+    await saveAndPreview(session, fixture, adapter.getPreparationPayload());
+    const applied = await rpc<Receipt>(
+      'select public.apply_form_preparation($1,$2,$3,$4,$5) as result',
+      [session.preparationId, session.revision, session.sourceRevision, session.sourceFingerprint, randomUUID()],
+    );
+    expect(applied.error).toBeUndefined();
+
+    const patientId = (await db.admin.query('select id from public.patient where base_id=$1', [fixture.baseId])).rows[0].id as string;
+    type RecordContext = { validation_status: string; record_revision: number; record_definition_revision: string; context_fingerprint: string };
+    const compatible = async (patch: Record<string, unknown>) => {
+      const ctx = await rpc<RecordContext>('select public.read_patient_form_context($1,$2) as result', [fixture.baseId, patientId]);
+      return rpc<Record<string, unknown>>('select public.update_patient_compatible($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9) as result', [
+        fixture.baseId, patientId, JSON.stringify(patch), ctx.validation_status, null,
+        ctx.record_revision, ctx.record_definition_revision, randomUUID(), ctx.context_fingerprint,
+      ]);
+    };
+    const patient = async () => (await db.admin.query(
+      'select data, template_version_id, row_version from public.patient where id=$1', [patientId])).rows[0] as
+      { data: Record<string, unknown>; template_version_id: string; row_version: number };
+
+    // Avant 20261012090000 : FORM_VALUE_CONVERSION_REQUIRED (definition_changed), même pour une
+    // option déjà connue, et la validation historique refusait la nouvelle.
+    await compatible({ lateralite: 'droite' });
+    await compatible({ lateralite: 'bilaterale' });
+    expect((await patient()).data).toEqual({ lateralite: 'bilaterale', grade: 'II' });
+    expect((await patient()).template_version_id).toBe(fixture.versionId);
+
+    // Chemin historique `update_patient` : même règle.
+    const before = await patient();
+    await rpc('select public.update_patient($1,$2::jsonb,$3,$4,$5) as result', [
+      patientId, JSON.stringify({ lateralite: 'gauche', grade: 'II' }), 'draft', null, before.row_version,
+    ]);
+    expect((await patient()).data).toEqual({ lateralite: 'gauche', grade: 'II' });
+
+    // La version active reste juge : un code inconnu des deux listes est toujours refusé.
+    await expect(compatible({ lateralite: 'inconnue' })).rejects.toThrow();
+  }, 180_000);
 });
