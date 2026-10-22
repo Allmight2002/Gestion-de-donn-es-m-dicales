@@ -3,7 +3,8 @@
 
 Usage :
     python docs/affiche/generer_affiche.py \
-        --service "Neurochirurgie" --contact "Dr Exemple - poste 1234"
+        --service "Neurochirurgie" --assistance-url "https://wa.me/23569308332" \
+        --contact "WhatsApp : +235 69 30 83 32"
 
 Dependances : segno (QR code), Pillow (metadonnees PNG), Chromium (rendu PDF/PNG ;
 CHROMIUM_PATH ou le Chromium Playwright de /opt/pw-browsers). Ne jamais inscrire
@@ -49,9 +50,9 @@ def icon(name: str, x: float, y: float, size: float, color: str, stroke: float =
             f'stroke-width="{stroke}" stroke-linecap="round" stroke-linejoin="round">{ICONS[name]}</g>')
 
 
-def qr_path(x: float, y: float, size: float) -> tuple[str, int]:
-    """Chemin SVG du QR code (sans marge : la zone blanche est geree par la mise en page)."""
-    qr = segno.make(URL, error="q", micro=False, boost_error=False)
+def qr_path(data: str, x: float, y: float, size: float, error: str) -> tuple[str, float]:
+    """Chemin SVG d'un QR code (sans marge) et largeur de sa marge blanche de 4 modules."""
+    qr = segno.make(data, error=error, micro=False, boost_error=False)
     matrix = [list(row) for row in qr.matrix]
     n = len(matrix)
     m = size / n
@@ -66,20 +67,28 @@ def qr_path(x: float, y: float, size: float) -> tuple[str, int]:
                 parts.append(f"M{x + start * m:.3f} {y + r * m:.3f}h{(c - start) * m:.3f}v{m:.3f}h{-(c - start) * m:.3f}z")
             else:
                 c += 1
-    return f'<path fill="#000000" d="{"".join(parts)}"/>', n
+    return f'<path fill="#000000" d="{"".join(parts)}"/>', 4 * m
 
 
-def build_svg(service: str, contact: str) -> str:
+def build_svg(service: str, contact: str, assistance_url: str) -> str:
     service_e, contact_e = escape(service), escape(contact)
     sub_size = 7.0 if len(service) <= 34 else max(4.8, 7.0 * 34 / len(service))
-    contact_size = 4.4 if len(contact) <= 55 else max(3.6, 4.4 * 55 / len(contact))
+    contact_size = 4.2 if len(contact) <= 40 else max(3.4, 4.2 * 40 / len(contact))
 
-    qr_size, inner_top = 88.0, 81.5
+    # QR code principal : 88 mm, marge blanche de 4 modules dans le cadre blanc.
+    qr_size, inner_top = 88.0, 72.5
     modules = segno.make(URL, error="q", micro=False, boost_error=False).symbol_size(border=0)[0]
-    quiet = 4 * qr_size / modules  # marge blanche reglementaire de 4 modules
+    quiet = 4 * qr_size / modules
     inner_h = qr_size + 2 * quiet
-    qr_svg, _ = qr_path((210 - qr_size) / 2, inner_top + quiet, qr_size)
+    qr_svg, _ = qr_path(URL, (210 - qr_size) / 2, inner_top + quiet, qr_size, "q")
     frame_bottom = inner_top + inner_h + 22
+
+    # QR code d'assistance : petit, a lire de pres, dans le pied de page.
+    help_box, help_x, help_y = 29.0, 164.0, 256.0
+    help_modules = segno.make(assistance_url, error="m", micro=False, boost_error=False).symbol_size(border=0)[0]
+    help_size = help_box * help_modules / (help_modules + 8)
+    help_svg, _ = qr_path(assistance_url, help_x + (help_box - help_size) / 2,
+                                   help_y + (help_box - help_size) / 2, help_size, "m")
 
     steps = [
         ("phone", "1", [("Scannez", True), (" le QR code",)], ["avec votre téléphone."]),
@@ -89,22 +98,22 @@ def build_svg(service: str, contact: str) -> str:
     steps_svg = []
     for i, (ico, num, first, rest) in enumerate(steps):
         cx = 45 + i * 60
-        steps_svg.append(f'<circle cx="{cx}" cy="234" r="7.5" fill="{TEAL_LIGHT}"/>')
-        steps_svg.append(icon(ico, cx - 4.5, 229.5, 9, TEAL, 2.0))
-        steps_svg.append(f'<circle cx="{cx - 6}" cy="228" r="3" fill="{TEAL}"/>'
-                         f'<text x="{cx - 6}" y="229.45" font-size="4" font-weight="700" fill="#fff" '
+        steps_svg.append(f'<circle cx="{cx}" cy="223" r="7.5" fill="{TEAL_LIGHT}"/>')
+        steps_svg.append(icon(ico, cx - 4.5, 218.5, 9, TEAL, 2.0))
+        steps_svg.append(f'<circle cx="{cx - 6}" cy="217" r="3" fill="{TEAL}"/>'
+                         f'<text x="{cx - 6}" y="218.45" font-size="4" font-weight="700" fill="#fff" '
                          f'text-anchor="middle">{num}</text>')
         spans = "".join(f'<tspan font-weight="700">{escape(t[0])}</tspan>' if len(t) == 2 else escape(t[0])
                         for t in first)
         lines = [spans] + [escape(line) for line in rest]
         for j, line in enumerate(lines):
-            steps_svg.append(f'<text x="{cx}" y="{250 + j * 5.6:.1f}" font-size="4.6" fill="{INK}" '
+            steps_svg.append(f'<text x="{cx}" y="{239 + j * 5.6:.1f}" font-size="4.6" fill="{INK}" '
                              f'text-anchor="middle">{line}</text>')
 
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297"
-     font-family="{FONT}" role="img" aria-label="Affiche MedData - Registre numérique des patients">
-  <title>MedData - Registre numérique des patients</title>
+     font-family="{FONT}" role="img" aria-label="Affiche MedData - Registre des patients">
+  <title>MedData - Registre des patients</title>
   <rect width="210" height="297" fill="#ffffff"/>
 
   <!-- En-tete -->
@@ -115,14 +124,13 @@ def build_svg(service: str, contact: str) -> str:
   <text x="33" y="23.4" font-size="9" font-weight="800" fill="{INK}" letter-spacing="-0.15">Med<tspan fill="{TEAL}">Data</tspan></text>
   <rect x="15" y="32" width="180" height="0.5" fill="{TEAL}" opacity="0.35"/>
 
-  <text x="105" y="46" font-size="11.5" font-weight="800" fill="{INK}" text-anchor="middle" letter-spacing="0.2">REGISTRE NUMÉRIQUE</text>
-  <text x="105" y="59" font-size="11.5" font-weight="800" fill="{INK}" text-anchor="middle" letter-spacing="0.2">DES PATIENTS</text>
+  <text x="105" y="49" font-size="12.5" font-weight="800" fill="{INK}" text-anchor="middle" letter-spacing="0.2">REGISTRE DES PATIENTS</text>
   <!-- SERVICE : modifier le texte ci-dessous -->
-  <text id="service" x="105" y="70.5" font-size="{sub_size:.2f}" font-weight="600" fill="{TEAL}" text-anchor="middle">Service de {service_e}</text>
+  <text id="service" x="105" y="61.5" font-size="{sub_size:.2f}" font-weight="600" fill="{TEAL}" text-anchor="middle">Service de {service_e}</text>
 
   <!-- Zone QR code -->
-  <rect x="30" y="78" width="150" height="{frame_bottom - 78:.2f}" rx="6" fill="{TEAL}"/>
-  <rect x="33.5" y="81.5" width="143" height="{inner_h:.2f}" rx="3.5" fill="#ffffff"/>
+  <rect x="30" y="{inner_top - 3.5}" width="150" height="{frame_bottom - inner_top + 3.5:.2f}" rx="6" fill="{TEAL}"/>
+  <rect x="33.5" y="{inner_top}" width="143" height="{inner_h:.2f}" rx="3.5" fill="#ffffff"/>
   {qr_svg}
   <text x="105" y="{inner_top + inner_h + 13.2:.2f}" font-size="6.4" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="0.2">SCANNEZ POUR ACCÉDER AU REGISTRE</text>
   <text x="105" y="{frame_bottom + 6.5:.2f}" font-size="3.6" fill="{MUTED}" text-anchor="middle">ou saisissez : <tspan font-weight="600" fill="{INK}">gestion-de-donn-es-m-dicales.vercel.app</tspan></text>
@@ -131,12 +139,16 @@ def build_svg(service: str, contact: str) -> str:
   {"".join(steps_svg)}
 
   <!-- Pied de page -->
-  <rect x="15" y="266" width="180" height="21" rx="3" fill="#f1f5f9"/>
-  {icon("lock", 21, 269.2, 6.2, TEAL, 2.2)}
-  <text x="30" y="274.3" font-size="4.8" font-weight="700" fill="{INK}">Accès réservé au personnel autorisé</text>
-  {icon("help", 21, 277.9, 6.2, TEAL, 2.2)}
+  <rect x="15" y="254" width="180" height="33" rx="3" fill="#f1f5f9"/>
+  {icon("lock", 21, 258.6, 6.2, TEAL, 2.2)}
+  <text x="30" y="263.7" font-size="4.8" font-weight="700" fill="{INK}">Accès réservé au personnel autorisé</text>
+  {icon("help", 21, 268.6, 6.2, TEAL, 2.2)}
+  <text x="30" y="273.7" font-size="4.6" fill="{INK}"><tspan font-weight="700">Assistance :</tspan> scannez ce code →</text>
   <!-- CONTACT : modifier le texte ci-dessous -->
-  <text id="contact" x="30" y="282.9" font-size="{contact_size:.2f}" fill="{INK}"><tspan font-weight="600">Assistance :</tspan> {contact_e}</text>
+  <text id="contact" x="30" y="280.6" font-size="{contact_size:.2f}" fill="{MUTED}">{contact_e}</text>
+  <!-- QR code d'assistance ({escape(assistance_url)}) -->
+  <rect x="{help_x}" y="{help_y}" width="{help_box}" height="{help_box}" rx="1.5" fill="#ffffff"/>
+  {help_svg}
 </svg>
 '''
 
@@ -172,13 +184,15 @@ def render(svg: str, out_dir: Path, stem: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--service", default="[Nom du service]")
-    parser.add_argument("--contact", default="[Nom ou contact du référent]")
+    parser.add_argument("--service", default="Neurochirurgie")
+    parser.add_argument("--contact", default="WhatsApp : +235 69 30 83 32")
+    parser.add_argument("--assistance-url", default="https://wa.me/23569308332",
+                        help="lien encode dans le petit QR code d'assistance")
     parser.add_argument("--out", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--nom", default="affiche-meddata", help="nom de base des fichiers produits")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    svg = build_svg(args.service, args.contact)
+    svg = build_svg(args.service, args.contact, args.assistance_url)
     (args.out / f"{args.nom}.svg").write_text(svg, "utf-8")
     render(svg, args.out, args.nom)
     print(f"Affiche generee dans {args.out} ({args.nom}.svg/.pdf/.png)")
