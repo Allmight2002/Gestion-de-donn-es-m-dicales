@@ -73,7 +73,7 @@ def qr_path(data: str, x: float, y: float, size: float, error: str) -> tuple[str
 def build_svg(service: str, contact: str, assistance_url: str) -> str:
     service_e, contact_e = escape(service), escape(contact)
     sub_size = 7.0 if len(service) <= 34 else max(4.8, 7.0 * 34 / len(service))
-    contact_size = 4.2 if len(contact) <= 40 else max(3.4, 4.2 * 40 / len(contact))
+    contact_size = 4.6 if len(contact) <= 40 else max(3.6, 4.6 * 40 / len(contact))
 
     # QR code principal : 88 mm, marge blanche de 4 modules dans le cadre blanc.
     qr_size, inner_top = 88.0, 72.5
@@ -140,12 +140,10 @@ def build_svg(service: str, contact: str, assistance_url: str) -> str:
 
   <!-- Pied de page -->
   <rect x="15" y="254" width="180" height="33" rx="3" fill="#f1f5f9"/>
-  {icon("lock", 21, 258.6, 6.2, TEAL, 2.2)}
-  <text x="30" y="263.7" font-size="4.8" font-weight="700" fill="{INK}">Accès réservé au personnel autorisé</text>
-  {icon("help", 21, 268.6, 6.2, TEAL, 2.2)}
-  <text x="30" y="273.7" font-size="4.6" fill="{INK}"><tspan font-weight="700">Assistance :</tspan> scannez ce code →</text>
+  {icon("help", 21, 261.9, 7, TEAL, 2.2)}
+  <text x="31" y="267.6" font-size="5.2" fill="{INK}"><tspan font-weight="700">Assistance :</tspan> scannez ce code →</text>
   <!-- CONTACT : modifier le texte ci-dessous -->
-  <text id="contact" x="30" y="280.6" font-size="{contact_size:.2f}" fill="{MUTED}">{contact_e}</text>
+  <text id="contact" x="31" y="276.2" font-size="{contact_size:.2f}" fill="{MUTED}">{contact_e}</text>
   <!-- QR code d'assistance ({escape(assistance_url)}) -->
   <rect x="{help_x}" y="{help_y}" width="{help_box}" height="{help_box}" rx="1.5" fill="#ffffff"/>
   {help_svg}
