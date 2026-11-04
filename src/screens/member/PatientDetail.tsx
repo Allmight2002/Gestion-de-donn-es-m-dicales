@@ -22,7 +22,7 @@ import {
 import { withSections } from '../../data/templates';
 import { displayFieldValue, terminologyMarks, type DiagnosisContext, type TemplateCommonLayout, type TemplateField, type TemplateSection, type ValidationRule } from '../../data/types';
 import { hiddenFieldKeys, isMissing, missingCodeOf } from '../../domain/validation';
-import { addedFieldsForRecord } from '../../domain/recordCompletion';
+import { addedFieldsForRecord, filledAddedFieldKeys } from '../../domain/recordCompletion';
 import { contextHiddenFieldKeys, occurrenceContextOf } from '../../domain/occurrenceContext';
 import { evaluateFormulaText, formulaFieldIndex } from '../../domain/export';
 import { FORMULA_TIME_UNITS, formulaUsesTemporalOperands, normalizeFormulaTimeUnit } from '../../domain/fieldFormula';
@@ -519,6 +519,30 @@ export function PatientDetail() {
     });
   };
   const patientAdditions = additionsFor('patient', patientVersion, patient.data);
+  // Variables ajoutees APRES la fiche mais deja renseignees (complement enregistre depuis
+  // l'ecran de modification) : elles sont restituees en lecture, avec le dictionnaire actif.
+  // Sans cela, la valeur existe mais sa zone reste vide sur la fiche.
+  const filledAdditionsFor = (
+    scope: 'patient' | 'encounter',
+    recordVersion: DisplayVersion | undefined,
+    data: Record<string, unknown>,
+  ): Column[] => {
+    if (!activeVersion || !recordVersion || activeVersion === recordVersion) return [];
+    const keys = filledAddedFieldKeys({
+      activeFields: activeVersion.ruleFields.filter((field) => field.scope === scope),
+      activeRules: activeVersion.rules,
+      activeSections: activeVersion.sections,
+      recordFieldKeys: new Set(recordVersion.ruleFields.filter((field) => field.scope === scope).map((field) => field.fieldKey)),
+      data,
+    });
+    return activeVersion.fields.filter((field) => field.scope === scope && keys.has(field.fieldKey));
+  };
+  /** Sections de la fiche, completees de celles du formulaire actif qui portent un ajout. */
+  const sectionsWithActive = (recordSections: readonly TemplateSection[] | undefined): TemplateSection[] | undefined => {
+    if (!activeVersion || !recordSections) return recordSections ? [...recordSections] : undefined;
+    const known = new Set(recordSections.map((section) => section.sectionKey));
+    return [...recordSections, ...activeVersion.sections.filter((section) => !known.has(section.sectionKey))];
+  };
   const patientHidden = patientVersion
     ? hiddenFieldKeys(
       patientVersion.rules,
@@ -527,7 +551,14 @@ export function PatientDetail() {
       patientVersion.sections,
     )
     : new Set<string>();
-  const visiblePatientFields = patientFields.filter((field) => !patientHidden.has(field.fieldKey));
+  const patientFilledAdditions = filledAdditionsFor('patient', patientVersion, patient.data);
+  const visiblePatientFields = [
+    ...patientFields.filter((field) => !patientHidden.has(field.fieldKey)),
+    ...patientFilledAdditions,
+  ];
+  const patientDisplaySections = patientFilledAdditions.length > 0
+    ? sectionsWithActive(patientVersion?.sections)
+    : patientVersion?.sections;
   // L68 — une occurrence de groupe n'est pas une rencontre : elle est rendue dans son bloc, et
   // la liste des rencontres ne doit jamais la faire passer pour une consultation (§4.2).
   const realEncounters = encounters.filter((encounter) => !encounter.groupSectionKey);
@@ -569,7 +600,7 @@ export function PatientDetail() {
     );
   const maskedGroups = maskedRepeatableSectionKeys(groupVersion?.sections, groupVersion?.rules ?? [], patient.data, groupHidden);
   const patientSteps = withRepeatableSteps(
-    groupFieldsBySection(visiblePatientFields, patientVersion?.sections, patientVersion?.commonLayout),
+    groupFieldsBySection(visiblePatientFields, patientDisplaySections, patientVersion?.commonLayout),
     groupVersion?.sections,
     maskedGroups,
     patientVersion?.commonLayout,
@@ -583,7 +614,7 @@ export function PatientDetail() {
     : step.group.fields.filter((f) => fmt(patient.data[f.fieldKey], f, patient.data, visiblePatientFields) === '—').length), 0);
   // Une section (ou sous-section) sans aucune valeur enregistree, ni descendante qui en porte,
   // est masquee avec ses valeurs vides ; « Afficher les champs vides » la remet.
-  const declaredParentOf = new Map((patientVersion?.sections ?? []).map((section) => [section.sectionKey, section.parentSectionKey ?? null]));
+  const declaredParentOf = new Map((patientDisplaySections ?? []).map((section) => [section.sectionKey, section.parentSectionKey ?? null]));
   const stepParentOf = (step: (typeof patientSteps)[number]): string | null => step.kind === 'repeatable'
     ? step.section.parentSectionKey ?? null
     : step.group.parentSectionKey ?? declaredParentOf.get(step.group.key) ?? null;
@@ -840,11 +871,20 @@ export function PatientDetail() {
               const encounterHidden = encounterVersion
                 ? hiddenFieldKeys(encounterVersion.rules, e.data, encounterRuleFields, encounterVersion.sections)
                 : new Set<string>();
-              const fieldsForEncounter = encounterScopeKnown ? (encounterVersion?.fields ?? encounterFields)
-                .filter((field) => field.scope === 'encounter' && (field.formula || field.fieldKey in e.data))
-                .filter((field) => !encounterHidden.has(field.fieldKey))
-                .filter((field) => !offlineView || scopeFields.has(field.fieldKey)) : [];
-              const sectionsForEncounter = encounterVersion?.sections;
+              const encounterFilledAdditions = encounterScopeKnown && !e.groupSectionKey
+                ? filledAdditionsFor('encounter', encounterVersion, e.data)
+                  .filter((field) => !offlineView || scopeFields.has(field.fieldKey))
+                : [];
+              const fieldsForEncounter = encounterScopeKnown ? [
+                ...(encounterVersion?.fields ?? encounterFields)
+                  .filter((field) => field.scope === 'encounter' && (field.formula || field.fieldKey in e.data))
+                  .filter((field) => !encounterHidden.has(field.fieldKey))
+                  .filter((field) => !offlineView || scopeFields.has(field.fieldKey)),
+                ...encounterFilledAdditions,
+              ] : [];
+              const sectionsForEncounter = encounterFilledAdditions.length > 0
+                ? sectionsWithActive(encounterVersion?.sections)
+                : encounterVersion?.sections;
               const formulaFields = encounterVersion?.fields ?? encounterFields;
               const encounterAdditions = encounterScopeKnown
                 ? additionsFor('encounter', encounterVersion, e.data, e.encounterType)
