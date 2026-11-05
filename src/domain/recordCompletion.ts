@@ -102,3 +102,32 @@ export function addedFieldsForRecord({
     && (!encounterType || !field.encounterTypes || field.encounterTypes.length === 0
       || field.encounterTypes.includes(encounterType)));
 }
+
+/**
+ * Variables du formulaire ACTIF absentes de la définition de la fiche mais qui y portent DÉJÀ
+ * une valeur (complément E3 enregistré depuis l'écran de modification). La lecture doit les
+ * restituer : sans cela, une donnée bien enregistrée paraît perdue sur la fiche alors que
+ * l'écran de modification l'affiche. Présentation seule ; rien n'est autorisé ni écrit ici.
+ */
+export function filledAddedFieldKeys({
+  activeFields, activeRules = [], activeSections, recordFieldKeys, data,
+}: {
+  activeFields: readonly TemplateField[];
+  activeRules?: readonly ValidationRule[];
+  activeSections?: readonly TemplateSection[] | null;
+  recordFieldKeys: ReadonlySet<string>;
+  data: Record<string, unknown>;
+}): Set<string> {
+  // Même décision d'affichage que le formulaire actif : une règle qui masque la variable la
+  // masque aussi en lecture.
+  const hidden = hiddenFieldKeys(activeRules, data, activeFields, activeSections);
+  // Une variable de bloc répétable vit dans ses occurrences, jamais sur la fiche elle-même.
+  const grouped = repeatableFieldKeys(activeFields, activeSections);
+  return new Set(activeFields
+    .filter((field) => !recordFieldKeys.has(field.fieldKey)
+      && !grouped.has(field.fieldKey)
+      && !hidden.has(field.fieldKey)
+      && !isCalculatedField(field)
+      && !isEmptyValue(data[field.fieldKey]))
+    .map((field) => field.fieldKey));
+}

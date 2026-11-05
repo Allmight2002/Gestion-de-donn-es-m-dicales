@@ -1338,11 +1338,18 @@ export function cellState(
   versionId: string | undefined,
   encounterType: string | null | undefined,
   emitted?: unknown,
+  /**
+   * La colonne de valeur a-t-elle pu restituer la variable pour cette fiche ? `false` : une
+   * valeur stockee mais etrangere a la fiche n'est PAS `present` — l'etat ne doit jamais
+   * annoncer une valeur que la cellule voisine ne porte pas. Absent = comportement anterieur.
+   */
+  restituted?: boolean,
 ): FieldValueState | '' {
   // Aucune fiche derriere la ligne (patient sans rencontre) : il n y a pas d etat a decrire,
   // et inventer `not_applicable` laisserait croire a une decision de portee.
   if (!data) return '';
   const raw = data[field.fieldKey];
+  if (restituted === false && !isCalculatedField(field)) return 'not_defined';
   if (hasStoredValue(raw)) return missingCodeOf(raw) ? 'explicit_missing' : 'present';
   if (isCalculatedField(field) && emitted !== '' && emitted !== undefined && emitted !== null) return 'present';
   if (!isDefinedInRevision(field, versionId)) return 'not_defined';
@@ -1389,13 +1396,32 @@ const belongsToField = (
   versionId: string | undefined,
   field: ExportField,
   context?: RevisionContext,
-) => reachesRevision(field, versionId, context);
+  data?: Record<string, unknown> | null,
+) => reachesRevision(field, versionId, context) || storedForActiveRevision(field, context, data);
+
+/**
+ * Filet de lignee : le complement E3 ecrit toujours contre le formulaire ACTIF. Une valeur
+ * STOCKEE pour une variable de la revision active appartient donc a la fiche, meme quand la
+ * chaine `derived_from_template_version_id` ne relie pas la revision de la fiche a l'active
+ * (revision publiee hors evolution, lien absent). Sans ce filet, la colonne d'etat disait
+ * `present` et la colonne de valeur restait vide : une donnee en base, un fichier muet.
+ * Une variable RETIREE de l'active reste, elle, soumise a la seule regle de lignee.
+ */
+function storedForActiveRevision(
+  field: ExportField,
+  context: RevisionContext | undefined,
+  data: Record<string, unknown> | null | undefined,
+): boolean {
+  const active = context?.lineage[0];
+  if (!active || !data || !hasStoredValue(data[field.fieldKey])) return false;
+  return (field.templateVersionIds ?? []).includes(active);
+}
 const valueFor = (
   data: Record<string, unknown>,
   versionId: string | undefined,
   field: ExportField,
   context?: RevisionContext,
-) => (belongsToField(versionId, field, context) ? formatValue(data[field.fieldKey], field.type) : '');
+) => (belongsToField(versionId, field, context, data) ? formatValue(data[field.fieldKey], field.type) : '');
 
 /** Renseigne la colonne du champ et ses colonnes analytiques derivees. */
 function assignField(
@@ -1412,11 +1438,11 @@ function assignField(
   /** E6 : type de la rencontre decrite par la ligne, pour la portee `not_applicable`. */
   encounterType?: string | null,
 ): void {
-  const applicable = Boolean(data) && belongsToField(versionId, field, context);
+  const applicable = Boolean(data) && belongsToField(versionId, field, context, data);
   /** Ecrit l etat de la case, une fois la colonne de valeur remplie. */
   const writeState = (emitted?: unknown) => {
     if (!context?.stateColumns.has(columnId(field))) return;
-    row[stateColumnId(field)] = cellState(field, data, versionId, encounterType, emitted);
+    row[stateColumnId(field)] = cellState(field, data, versionId, encounterType, emitted, applicable);
   };
   // L35 : rien n'est stocke sous cette cle, la colonne est RECALCULEE ici. La formule
   // retenue est celle de la version de LA FICHE, pas celle de la version courante.

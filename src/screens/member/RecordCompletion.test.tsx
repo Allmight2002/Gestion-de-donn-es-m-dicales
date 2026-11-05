@@ -248,14 +248,18 @@ describe('E5 — complétion des rencontres existantes', () => {
 describe('E5 — la fiche annonce les ajouts et conduit à la complétion', () => {
   const attachments = { async listAttachments() { return []; } } as unknown as AttachmentRepository;
 
-  function fiche(update = vi.fn(async () => receipt('patient', 'p1'))) {
-    const data: Record<string, unknown> = { diagnostic: ['D1'], historique: 'ancien' };
+  function fiche(
+    update = vi.fn(async () => receipt('patient', 'p1')),
+    extra: Record<string, unknown> = {},
+    encounterExtra: Record<string, unknown> = {},
+  ) {
+    const data: Record<string, unknown> = { diagnostic: ['D1'], historique: 'ancien', ...extra };
     const patient: PatientListItem = {
       id: 'p1', code: 'P-1', templateVersionId: OLD, data, validationStatus: 'curated', version: 3, identity: null,
     };
     const encounter: Encounter = {
       id: 'e1', encounterType: 'consultation', encounterDate: '2026-09-01', validationStatus: 'curated',
-      ageValue: 40, ageUnit: 'years', data: { mesure: 8 }, updatedAt: '2026-09-16T10:00:00Z', templateVersionId: OLD,
+      ageValue: 40, ageUnit: 'years', data: { mesure: 8, ...encounterExtra }, updatedAt: '2026-09-16T10:00:00Z', templateVersionId: OLD,
     };
     const patients = {
       async getPatient() { return patient; },
@@ -295,5 +299,18 @@ describe('E5 — la fiche annonce les ajouts et conduit à la complétion', () =
 
     expect(await screen.findByLabelText('Ajout facultatif')).toHaveValue('');
     expect(screen.getByLabelText('Ajout obligatoire')).toHaveValue('');
+  });
+
+  test('un ajout déjà renseigné par complément est restitué sur la fiche, plus annoncé vide', async () => {
+    fiche(undefined, { ajout_facultatif: 'complété' }, { ajout_rencontre: 5 });
+    // La valeur existe en base : la fiche la montre, au lieu d'une zone vide.
+    expect(await screen.findByText('complété')).toBeInTheDocument();
+    expect(screen.getByText('Ajout facultatif')).toBeInTheDocument();
+    // Elle ne compte plus parmi les ajouts à renseigner.
+    expect(screen.getByText(/3 variable\(s\) ajoutée\(s\) au formulaire/)).toBeInTheDocument();
+    // Rencontre : la valeur complémentée est restituée, l'autre ajout reste annoncé.
+    await userEvent.click(screen.getByRole('button', { name: /Consultation/ }));
+    expect(screen.getByText('Ajout rencontre facultatif')).toBeInTheDocument();
+    expect(screen.getByText(/1 variable\(s\) ajoutée\(s\) au formulaire/)).toBeInTheDocument();
   });
 });
