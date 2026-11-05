@@ -74,3 +74,6 @@ export function validateDatabaseFileInventory(files: Array<{ file: string }>, fo
 export function validateCoordinatedStorageSource(env?: Partial<Record<string, string | undefined>>): void;
 
 export function validateCoordinatedSource(target: string, env?: Partial<Record<string, string | undefined>>): { target: string; projectRef: string };
+
+export class CoordinatedBackupError extends Error {}
+export function publicFailureReason(error: unknown): string | null;

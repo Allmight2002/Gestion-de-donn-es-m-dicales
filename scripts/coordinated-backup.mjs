@@ -28,6 +28,20 @@ import {
 
 import { validateContinuityPolicy } from './continuity-policy.mjs';
 
+// Erreur emise par ce script avec un message redige ici, sans valeur de
+// configuration, stderr ni chemin: seul ce type peut etre affiche par main().
+// Toute autre erreur (fs, sous-processus, modules importes) reste masquee.
+export class CoordinatedBackupError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = 'CoordinatedBackupError';
+  }
+}
+
+export function publicFailureReason(error) {
+  return error instanceof CoordinatedBackupError ? error.message : null;
+}
+
 const FORMAT = 'meddata-coordinated-backup/v2';
 const LEGACY_FORMAT = 'meddata-coordinated-backup/v1';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -110,7 +124,7 @@ function ensureOutsideRepository(value) {
   const destination = resolve(value);
   const fromRepository = relative(root, destination);
   if (!fromRepository.startsWith('..') && !isAbsolute(fromRepository)) {
-    throw new Error('La sauvegarde coordonnee doit etre ecrite hors du depot.');
+    throw new CoordinatedBackupError('La sauvegarde coordonnee doit etre ecrite hors du depot.');
   }
   return destination;
 }
@@ -118,7 +132,7 @@ function ensureOutsideRepository(value) {
 async function ensureAbsent(path) {
   try {
     await access(path, fsConstants.F_OK);
-    throw new Error('Le repertoire de sauvegarde existe deja.');
+    throw new CoordinatedBackupError('Le repertoire de sauvegarde existe deja.');
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
@@ -127,26 +141,26 @@ async function ensureAbsent(path) {
 export function validateCoordinatedSource(target, env = process.env) {
   if (target === 'isolated-local') {
     if (env.RECOVERY_ALLOW_LOCAL_BACKUP !== 'true' || env.RECOVERY_DATA_CLASSIFICATION !== 'fictitious-only') {
-      throw new Error('Sauvegarde locale refusee sans classification fictitious-only et activation explicite.');
+      throw new CoordinatedBackupError('Sauvegarde locale refusee sans classification fictitious-only et activation explicite.');
     }
     for (const [value, database] of [[env.SUPABASE_URL, false], [env.SUPABASE_DB_URL, true]]) {
       let url;
-      try { url = new URL(value); } catch { throw new Error('URL source locale invalide.'); }
+      try { url = new URL(value); } catch { throw new CoordinatedBackupError('URL source locale invalide.'); }
       if (!([database ? 'postgres:' : 'http:', database ? 'postgresql:' : 'https:'].includes(url.protocol))
           || !['127.0.0.1', '[::1]'].includes(url.hostname) || !url.port || url.search || url.hash
           || (!database && (url.username || url.password || url.pathname !== '/'))) {
-        throw new Error('La source locale exige des URLs loopback explicites sans surcharge.');
+        throw new CoordinatedBackupError('La source locale exige des URLs loopback explicites sans surcharge.');
       }
     }
     if (!/^meddata-recovery-[a-z0-9-]+$/.test(env.SUPABASE_PROJECT_REF ?? '')
         || (env.SUPABASE_SERVICE_ROLE_KEY ?? '').length < 20
         || env.BACKUP_REQUIRE_SESSION_POOLER === 'true') {
-      throw new Error('Configuration source fictive invalide.');
+      throw new CoordinatedBackupError('Configuration source fictive invalide.');
     }
     return { target, projectRef: env.SUPABASE_PROJECT_REF };
   }
   if (!['staging', 'production'].includes(target)) {
-    throw new Error('--target=staging ou --target=production est requis.');
+    throw new CoordinatedBackupError('--target=staging ou --target=production est requis.');
   }
   const projectRef = clean(env.SUPABASE_PROJECT_REF).toLowerCase();
   const supabaseRef = projectRefFromSupabaseUrl(env.SUPABASE_URL);
@@ -154,27 +168,27 @@ export function validateCoordinatedSource(target, env = process.env) {
   if (!/^[a-z0-9]{20}$/.test(projectRef)
       || supabaseRef !== projectRef
       || databaseRef !== projectRef) {
-    throw new Error('Les references Supabase URL/DB/projet sont absentes ou divergentes.');
+    throw new CoordinatedBackupError('Les references Supabase URL/DB/projet sont absentes ou divergentes.');
   }
   if (target === 'staging' && projectRef !== STAGING_PROJECT_REF) {
-    throw new Error('La cible ne correspond pas au staging MedData approuve.');
+    throw new CoordinatedBackupError('La cible ne correspond pas au staging MedData approuve.');
   }
   if (target === 'production' && projectRef !== PRODUCTION_PROJECT_REF) {
-    throw new Error('La cible ne correspond pas a la production MedData approuvee.');
+    throw new CoordinatedBackupError('La cible ne correspond pas a la production MedData approuvee.');
   }
   if (clean(env.SUPABASE_SERVICE_ROLE_KEY).length < 20) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY est absente ou manifestement invalide.');
+    throw new CoordinatedBackupError('SUPABASE_SERVICE_ROLE_KEY est absente ou manifestement invalide.');
   }
   if (env.BACKUP_REQUIRE_SESSION_POOLER === 'true'
       && !isSessionPoolerDatabaseUrl(env.SUPABASE_DB_URL)) {
-    throw new Error('La sauvegarde CI exige le Session pooler Supabase sur le port 5432.');
+    throw new CoordinatedBackupError('La sauvegarde CI exige le Session pooler Supabase sur le port 5432.');
   }
   return { target, projectRef };
 }
 
 export function validateCoordinatedStorageSource(env = process.env) {
   if (env.STORAGE_API_URL || env.STORAGE_SERVICE_ROLE_KEY) {
-    throw new Error('Les surcharges Storage sont interdites pour une sauvegarde coordonnee.');
+    throw new CoordinatedBackupError('Les surcharges Storage sont interdites pour une sauvegarde coordonnee.');
   }
 }
 
@@ -277,15 +291,15 @@ export async function prepareDumpImage({
     await readFile(join(root, 'node_modules', 'supabase', 'package.json'), 'utf8'),
   ).version;
   if (cliVersion !== COORDINATED_DUMP_IMAGE.cliVersion) {
-    throw new Error('Version Supabase CLI divergente de l image de dump epinglee.');
+    throw new CoordinatedBackupError('Version Supabase CLI divergente de l image de dump epinglee.');
   }
   const dbMajorVersion = configuredDbMajorVersion
     ?? dbMajorVersionFromConfig(await readFile(join(root, 'supabase', 'config.toml'), 'utf8'));
   if (dbMajorVersion !== COORDINATED_DUMP_IMAGE.dbMajorVersion) {
-    throw new Error('Version PostgreSQL divergente de l image de dump epinglee.');
+    throw new CoordinatedBackupError('Version PostgreSQL divergente de l image de dump epinglee.');
   }
   if (!Number.isSafeInteger(attempts) || attempts < 1 || attempts > 3) {
-    throw new Error('Nombre de tentatives de preparation du dump invalide.');
+    throw new CoordinatedBackupError('Nombre de tentatives de preparation du dump invalide.');
   }
   if (expectedDumpImageIsPresent(execute, sourceEnv)) return 'cached';
 
@@ -317,7 +331,7 @@ export async function prepareDumpImage({
       }
     }
   }
-  throw new Error('Image de dump PostgreSQL indisponible apres retries primaire et miroir; aucun dump lance.');
+  throw new CoordinatedBackupError('Image de dump PostgreSQL indisponible apres retries primaire et miroir; aucun dump lance.');
 }
 
 export function runSupabaseDump(
@@ -352,7 +366,7 @@ export function runSupabaseDump(
     );
   } catch (error) {
     const signals = dumpFailureSignals(error);
-    throw new Error(
+    throw new CoordinatedBackupError(
       `Export PostgreSQL ${safeStage} impossible (categorie: ${classifyDumpFailure(error)}; `
         + `signaux: ${signals.join(',') || 'none'}); detail masque.`,
       { cause: error },
@@ -377,7 +391,7 @@ export async function writeAtomicBackupDirectory(
     try {
       await rm(partial, { recursive: true, force: true });
     } catch {
-      throw new Error('Le nettoyage du repertoire de sauvegarde partiel a echoue; intervention requise.', {
+      throw new CoordinatedBackupError('Le nettoyage du repertoire de sauvegarde partiel a echoue; intervention requise.', {
         cause: error,
       });
     }
@@ -463,7 +477,7 @@ async function backup() {
         },
       );
     } catch {
-      throw new Error('La sauvegarde des octets Storage a echoue; detail sensible masque.');
+      throw new CoordinatedBackupError('La sauvegarde des octets Storage a echoue; detail sensible masque.');
     }
     const storageHeaderBytes = await readFile(join(storageDirectory, 'backup.json'));
     const storageHeader = JSON.parse(storageHeaderBytes.toString('utf8'));
@@ -507,7 +521,7 @@ export function validateDatabaseCoverage(sql) {
   for (const table of ['auth.users', 'auth.identities', 'storage.buckets', 'storage.objects']) {
     const [schema, name] = table.split('.');
     const expression = new RegExp(`^COPY (?:"${schema}"|${schema})\\.(?:"${name}"|${name})[ (]`, 'm');
-    if (!expression.test(sql)) throw new Error('Export DB incomplet: couverture Auth/Storage absente (contenu masque).');
+    if (!expression.test(sql)) throw new CoordinatedBackupError('Export DB incomplet: couverture Auth/Storage absente (contenu masque).');
   }
 }
 
@@ -517,7 +531,7 @@ export function validateDatabaseFileInventory(files, format = LEGACY_FORMAT) {
   if (!Array.isArray(files) || files.length !== expected.length
       || new Set(files.map((file) => file?.file)).size !== expected.length
       || files.some((file) => !expected.includes(file?.file))) {
-    throw new Error('Inventaire des exports DB incomplet ou duplique.');
+    throw new CoordinatedBackupError('Inventaire des exports DB incomplet ou duplique.');
   }
 }
 
@@ -528,15 +542,15 @@ async function readAuthenticatedManifest(backupRoot, key) {
       || !/^[a-f0-9]{64}$/.test(hmacSha256 ?? '')
       || !timingSafeEqual(Buffer.from(manifestHmac(unsignedManifest, key), 'hex'), Buffer.from(hmacSha256, 'hex'))
       || !Array.isArray(manifest.databaseFiles)) {
-    throw new Error('Manifest de sauvegarde coordonnee invalide ou non authentifie.');
+    throw new CoordinatedBackupError('Manifest de sauvegarde coordonnee invalide ou non authentifie.');
   }
   validateDatabaseFileInventory(manifest.databaseFiles, manifest.format);
   if (manifest.storage?.directory !== 'storage-objects') {
-    throw new Error('Repertoire Storage du manifest invalide.');
+    throw new CoordinatedBackupError('Repertoire Storage du manifest invalide.');
   }
   if (manifest.keyId !== undefined && (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(manifest.keyId)
       || (process.env.BACKUP_KEY_ID && manifest.keyId !== process.env.BACKUP_KEY_ID))) {
-    throw new Error('Version de cle divergente du manifest authentifie.');
+    throw new CoordinatedBackupError('Version de cle divergente du manifest authentifie.');
   }
   return manifest;
 }
@@ -545,20 +559,20 @@ async function verifiedDatabasePayloads(backupRoot, key, manifest) {
   const payloads = [];
   for (const file of manifest.databaseFiles) {
     if (!/^[a-z-]+\.sql\.bin$/.test(file.file ?? '')) {
-      throw new Error('Nom d export DB chiffre invalide.');
+      throw new CoordinatedBackupError('Nom d export DB chiffre invalide.');
     }
     const encrypted = await readFile(join(backupRoot, file.file));
     if (encrypted.length !== file.encryptedBytes || sha256(encrypted) !== file.encryptedSha256) {
-      throw new Error('Empreinte d un export DB chiffre invalide.');
+      throw new CoordinatedBackupError('Empreinte d un export DB chiffre invalide.');
     }
     let plaintext;
     try {
       plaintext = decryptPayload(key, encrypted);
     } catch {
-      throw new Error('Dechiffrement d un export DB impossible.');
+      throw new CoordinatedBackupError('Dechiffrement d un export DB impossible.');
     }
     if (plaintext.length !== file.plaintextBytes || sha256(plaintext) !== file.plaintextSha256) {
-      throw new Error('Empreinte d un export DB dechiffre invalide.');
+      throw new CoordinatedBackupError('Empreinte d un export DB dechiffre invalide.');
     }
     if (manifest.format === FORMAT && file.file === 'data.sql.bin') {
       validateDatabaseCoverage(plaintext.toString('utf8'));
@@ -575,7 +589,7 @@ async function verify() {
   await verifiedDatabasePayloads(backupRoot, key, manifest);
   const storageHeader = await readFile(join(backupRoot, manifest.storage.directory, 'backup.json'));
   if (sha256(storageHeader) !== manifest.storage.headerSha256) {
-    throw new Error('En-tete Storage non lie au manifest coordonne.');
+    throw new CoordinatedBackupError('En-tete Storage non lie au manifest coordonne.');
   }
   try {
     execFileSync(
@@ -594,14 +608,14 @@ async function verify() {
       },
     );
   } catch {
-    throw new Error('Verification des objets Storage impossible.');
+    throw new CoordinatedBackupError('Verification des objets Storage impossible.');
   }
   console.log('Sauvegarde coordonnee verifiee: OK (manifest HMAC, DB et Storage).');
 }
 
 async function extract() {
   if (process.env.BACKUP_ALLOW_PLAINTEXT_EXTRACTION !== 'true') {
-    throw new Error('Extraction en clair refusee sans BACKUP_ALLOW_PLAINTEXT_EXTRACTION=true.');
+    throw new CoordinatedBackupError('Extraction en clair refusee sans BACKUP_ALLOW_PLAINTEXT_EXTRACTION=true.');
   }
   const backupRoot = resolve(option('backup') || process.env.BACKUP_SET_DIR);
   const destination = ensureOutsideRepository(option('output') || process.env.BACKUP_EXTRACT_DIR);
@@ -629,14 +643,16 @@ async function main() {
   if (command === 'backup') await backup();
   else if (command === 'verify') await verify();
   else if (command === 'extract') await extract();
-  else throw new Error('Usage: coordinated-backup.mjs backup|verify|extract --output=...|--backup=...');
+  else throw new CoordinatedBackupError('Usage: coordinated-backup.mjs backup|verify|extract --output=...|--backup=...');
 }
 
 const isMain = process.argv[1]
   && resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
 if (isMain) {
-  main().catch(() => {
+  main().catch((error) => {
     console.error('Sauvegarde coordonnee impossible (detail masque); verifier configuration, couverture et integrite.');
+    const reason = publicFailureReason(error);
+    if (reason) console.error(`Cause: ${reason}`);
     process.exitCode = 1;
   });
 }
