@@ -10,6 +10,7 @@ import {
   isSessionPoolerDatabaseUrl,
   prepareDumpImage,
   runSupabaseDump,
+  publicFailureReason,
   withIsolatedSupabaseWorkdir,
   writeAtomicBackupDirectory,
   validateCoordinatedStorageSource,
@@ -107,6 +108,23 @@ describe('sauvegarde coordonnee sure', () => {
     expect(message).not.toContain(databaseUrl);
     expect(message).not.toContain('mot-de-passe');
     expect(message).not.toContain('server-secret');
+  });
+
+  test('ne publie que la raison redigee par le script, jamais une erreur brute', () => {
+    let failure: unknown;
+    try {
+      runSupabaseDump('postgresql://fictitious', '/tmp/roles.sql', ['--role-only'], 'roles', {
+        execute: () => { throw Object.assign(new Error('sensitive-marker'), { stderr: 'sensitive-marker' }); },
+        sourceEnv: { PATH: '/usr/bin' },
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(publicFailureReason(failure)).toMatch(/^Export PostgreSQL roles impossible \(categorie: cli-exit;/);
+    expect(publicFailureReason(failure)).not.toContain('sensitive-marker');
+    expect(publicFailureReason(new Error('postgresql://user:secret@host'))).toBeNull();
+    expect(publicFailureReason(new SyntaxError('sensitive-marker'))).toBeNull();
+    expect(publicFailureReason('sensitive-marker')).toBeNull();
   });
 
   test('identifie les categories utiles sans reprendre le diagnostic brut', () => {

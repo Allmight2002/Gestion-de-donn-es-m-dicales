@@ -71,7 +71,23 @@ test('refuse un blob altere et masque les erreurs de parsing du manifest', async
     const failure = error as { stderr: Buffer };
     expect(failure.stderr.toString()).toContain('detail masque');
     expect(failure.stderr.toString()).not.toContain('sensitive-marker');
+    expect(failure.stderr.toString()).not.toContain('Cause:');
   }
+});
+
+test('affiche la cause redigee par le script sans valeur de configuration', () => {
+  let stderr = '';
+  try {
+    execFileSync(process.execPath, [resolve('scripts/coordinated-backup.mjs'), 'backup', '--target=sensitive-marker'], {
+      env: { ...process.env, SUPABASE_DB_URL: 'postgresql://user:sensitive-marker@host:5432/postgres' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    stderr = (error as { stderr: Buffer }).stderr.toString();
+  }
+  expect(stderr).toContain('detail masque');
+  expect(stderr).toContain('Cause: --target=staging ou --target=production est requis.');
+  expect(stderr).not.toContain('sensitive-marker');
 });
 
 test('refuse un export v2 authentifie sans les tables Auth et Storage', async () => {
