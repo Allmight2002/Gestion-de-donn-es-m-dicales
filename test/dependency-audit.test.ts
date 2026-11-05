@@ -98,7 +98,14 @@ describe('politique npm audit stricte', () => {
     expect(pkg.dependencies['react-router']).toBe('8.3.0');
     expect(pkg.dependencies['react-router-dom']).toBeUndefined();
     expect(pkg.devDependencies['@testing-library/react']).toBe('16.3.2');
-    expect(pkg.overrides).toEqual({ 'brace-expansion': '5.0.12', ejs: '6.0.1' });
+    expect(pkg.overrides).toEqual({
+      'brace-expansion': '5.0.12',
+      ejs: '6.0.1',
+      // Correctifs GHSA-g3hv-75wg-m249 et GHSA-3g3m-2fjr-6pw4, a retirer quand
+      // eslint, typescript-eslint et workbox-build les declareront nativement.
+      glob: '14.0.3',
+      minimatch: '11.0.3',
+    });
     expect(pkg.scripts['audit:dependencies']).toBe('node scripts/validate-dependency-audit.mjs');
     expect(ci).toContain('npm run audit:dependencies -- --scope=staging');
     expect(release).toContain('npm run audit:dependencies -- --scope=staging');
