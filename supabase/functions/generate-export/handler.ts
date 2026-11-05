@@ -894,28 +894,37 @@ export async function handleGenerateExport(req: Request, deps: GenerateExportDep
     // qu'un complement a ecrite sur une fiche restee sous une revision ancienne, et dire depuis
     // quelle revision une variable existe. La marche est bornee : une chaine plus longue que la
     // limite est une boucle, pas un historique.
-    const revisionRows = await readInChunks<TemplateVersionRow>({
-      values: definitionVersions,
-      resource: 'definition_revisions',
-      limit: EXPORT_LIMITS.definitionRevisions,
-      keyOf: (row) => row.id,
-      fetchPage: async (chunk, from, to) => {
-        const result = await admin.from('template_version')
-          .select('id, version_number, created_at, applied_at, derived_from_template_version_id', {
-            count: 'exact',
-          })
-          .in('id', chunk)
-          .order('id', { ascending: true })
-          .range(from, to);
-        return { data: result.data as TemplateVersionRow[] | null, error: result.error, count: result.count };
-      },
-    });
+    const readRevisions = (values: string[]) =>
+      readInChunks<TemplateVersionRow>({
+        values,
+        resource: 'definition_revisions',
+        limit: EXPORT_LIMITS.definitionRevisions,
+        keyOf: (row) => row.id,
+        fetchPage: async (chunk, from, to) => {
+          const result = await admin.from('template_version')
+            .select('id, version_number, created_at, applied_at, derived_from_template_version_id', {
+              count: 'exact',
+            })
+            .in('id', chunk)
+            .order('id', { ascending: true })
+            .range(from, to);
+          return { data: result.data as TemplateVersionRow[] | null, error: result.error, count: result.count };
+        },
+      });
+    const revisionRows = await readRevisions(definitionVersions);
     const revisionById = new Map(revisionRows.map((row) => [row.id, row]));
     const revisionLineage: string[] = [];
     {
+      // Les revisions INTERMEDIAIRES (ni portees par une fiche, ni active) ne sont pas dans
+      // `definitionVersions` : sans les lire ici, la marche s'arretait a la premiere d'entre
+      // elles, et une fiche de V1 sous une active V5 paraissait etrangere a la lignee. Seule la
+      // revision est lue, pas son dictionnaire : le fichier garde exactement ses colonnes.
       const walked = new Set<string>();
       let cursor = activeRevision;
       while (cursor && !walked.has(cursor) && revisionLineage.length < EXPORT_LIMITS.definitionRevisions) {
+        if (!revisionById.has(cursor)) {
+          for (const row of await readRevisions([cursor])) revisionById.set(row.id, row);
+        }
         walked.add(cursor);
         revisionLineage.push(cursor);
         cursor = revisionById.get(cursor)?.derived_from_template_version_id ?? null;

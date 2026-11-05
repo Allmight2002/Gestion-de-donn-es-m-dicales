@@ -2435,6 +2435,42 @@ Deno.test('E6 : le classeur distingue les absences et conserve la valeur complem
   assertEquals('state__encounter__poids' in ancienne, false);
 });
 
+Deno.test('E6 : une revision intermediaire non portee par une fiche ne coupe pas la lignee', async () => {
+  // V1 --> V_MID --> V3 (active). Aucune fiche n'est en V_MID : sans lecture des revisions
+  // intermediaires, la marche s'arretait en V_MID et la fiche V1 sortait de la lignee.
+  const TV_MID = '623e4567-e89b-42d3-a456-426614174000';
+  const versions = [
+    E6_VERSIONS[0],
+    {
+      id: TV_MID,
+      version_number: 2,
+      created_at: '2026-03-01T00:00:00.000Z',
+      applied_at: '2026-03-01T12:00:00.000Z',
+      derived_from_template_version_id: TV,
+    },
+    { ...E6_VERSIONS[1], version_number: 3, derived_from_template_version_id: TV_MID },
+  ];
+  const capture: Capture = { bytes: null, done: null };
+  const { status } = await readResponse(
+    await handleGenerateExport(
+      makeRequest({ body: { cohortId: COHORT, format: 'xlsx' } }),
+      e6Deps(capture, { versionRows: versions }),
+    ),
+  );
+  assertEquals(status, 200);
+  await capture.done;
+  const wb = XLSX.read(capture.bytes!, { type: 'array' });
+  const dict = XLSX.utils.sheet_to_json(wb.Sheets['Dictionnaire']) as Record<string, unknown>[];
+  const ligne = (columnId: string) => dict.find((row) => row.column_id === columnId)!;
+  // `poids` existe depuis V1 : le dictionnaire ne doit pas la dater de l'active.
+  assertEquals(ligne('encounter__poids').introduced_in_revision, '1');
+  assertEquals(ligne('encounter__retiree').introduced_in_revision, '1');
+  const main = XLSX.utils.sheet_to_json(wb.Sheets['Données']) as Record<string, unknown>[];
+  const ancienne = main.find((row) => row.encounter_id === 'e1')!;
+  assertEquals(String(ancienne['encounter__fievre']), '1');
+  assertEquals(ancienne['state__encounter__fievre'], 'present');
+});
+
 Deno.test('E6 : dictionnaire, metadonnees et provenance expliquent le fichier', async () => {
   const capture: Capture = { bytes: null, done: null };
   const { status } = await readResponse(
