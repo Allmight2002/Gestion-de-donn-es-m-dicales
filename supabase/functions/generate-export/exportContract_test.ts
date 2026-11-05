@@ -1382,6 +1382,21 @@ Deno.test('E6 : une valeur ajoutee par complement sur une fiche ancienne reste e
   assertEquals(sansContexte.columns.includes(stateColumnId(FIEVRE)), false);
 });
 
+Deno.test('E6 : lignee rompue, une valeur complementee pour l active reste exportee', () => {
+  // La revision V1 n'est pas reliee a l'active V2 (lien `derived_from` absent) : le complement
+  // a pourtant ecrit `fievre`, definie dans l'active. La valeur ne doit pas disparaitre.
+  const ancienne = rencontreVersionnee('e1', V1, { poids: 12, fievre: true });
+  const recente = rencontreVersionnee('e2', V2, { poids: 14, retiree: 'reliquat' });
+  const context = makeRevisionContext([V2], stateColumnsFor(CHAMPS_E6, [V1, V2]));
+  const table = buildEncounterExport([ancienne, recente], CHAMPS_E6, 'complete', undefined, context);
+  assertEquals(table.rows[0][columnId(FIEVRE)], '1');
+  assertEquals(table.rows[0][stateColumnId(FIEVRE)], 'present');
+  // Une variable RETIREE de l'active ne profite pas du filet : sa valeur reste hors de la
+  // fiche recente, et l'etat ne pretend plus `present` a cote d'une cellule vide.
+  assertEquals(table.rows[1][columnId(RETIREE)], '');
+  assertEquals(table.rows[1][stateColumnId(RETIREE)], 'not_defined');
+});
+
 Deno.test('E6 : les trois absences sont distinguees, jamais reduites a une cellule vide', () => {
   const ancienne = rencontreVersionnee('e1', V1, { poids: 12 });
   const recente = rencontreVersionnee('e2', V2, { poids: 14 });
